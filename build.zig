@@ -38,7 +38,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    main_tests.addLibraryPath(".");
     main_tests.addRPath(".");
     main_tests.linkSystemLibrary("flashlight_binding");
     main_tests.addIncludePath("cpp");
