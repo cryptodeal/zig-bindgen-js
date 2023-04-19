@@ -16,8 +16,8 @@ brew install zig --HEAD
 zig build
 ```
 
-**Run Example**
+**Run Example via Bun/Node**
 
 ```bash
-node
+bun example.js
 ```
