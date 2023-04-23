@@ -31,13 +31,40 @@ pub fn define_module(comptime init: fn (*JSCtx, napi.napi_value) Error!napi.napi
     @export(NapiModule.register, .{ .name = "napi_register_module_v1", .linkage = .Strong });
 }
 
-// TODO: use `ArenaAllocator` for tmp allocations
-var TEMP_GPA = std.heap.GeneralPurposeAllocator(.{}){};
-pub const TEMP = TEMP_GPA.allocator();
+const TransientAllocator = struct {
+    count: u32 = 0,
+    used_alloc: std.heap.ArenaAllocator,
+
+    pub fn init(backing_allocator: std.mem.Allocator) TransientAllocator {
+        return .{
+            .used_alloc = std.heap.ArenaAllocator.init(backing_allocator),
+        };
+    }
+
+    pub fn deinit(self: *TransientAllocator) void {
+        self.used_alloc.deinit();
+    }
+
+    pub fn allocator(self: *TransientAllocator) std.mem.Allocator {
+        return self.used_alloc.allocator();
+    }
+
+    pub fn inc(self: *TransientAllocator) void {
+        self.count += 1;
+    }
+
+    pub fn dec(self: *TransientAllocator) void {
+        self.count -= 1;
+        if (self.count == 0) {
+            _ = self.used_alloc.reset(.retain_capacity);
+        }
+    }
+};
 
 pub const JSCtx = struct {
     env: napi.napi_env,
     refs: std.AutoHashMapUnmanaged(usize, napi.napi_ref) = .{},
+    mem: TransientAllocator,
 
     // TODO: pass fn name to `parse` and `write` hooks
 
@@ -46,17 +73,8 @@ pub const JSCtx = struct {
     pub fn arg_parser(self: *JSCtx, comptime T: type, v: napi.napi_value, _: []const u8) Error!T {
         if (T == napi.napi_value) return v;
         if (comptime trait.isZigString(T)) return self.get_string(v);
-        std.debug.print("{any}\n", .{@typeInfo(T)});
-        std.debug.print("{any}\n", .{T});
-
-        // TODO: refactor this mess lmao
-        if (comptime std.mem.startsWith(u8, @typeName(T), "[*c]")) {
-            const type_info = comptime @typeInfo(T);
-            const data_type = comptime type_info.Pointer.child;
-            if (comptime data_type == f32 or data_type == f64 or data_type == u8 or data_type == u16 or data_type == u32 or data_type == u64 or data_type == i8 or data_type == i16 or data_type == i32 or data_type == i64) {
-                return self.get_typed_array_data(T, v);
-            }
-        }
+        // std.debug.print("{any}\n", .{@typeInfo(T)});
+        // std.debug.print("{any}\n", .{T});
 
         return switch (@typeInfo(T)) {
             .Void => void{},
@@ -65,9 +83,22 @@ pub const JSCtx = struct {
             .Int, .ComptimeInt, .Float, .ComptimeFloat => self.get_number(T, v),
             .Enum => std.meta.intToEnum(T, self.get_number(u32, v)),
             .Struct => if (trait.isTuple(T)) self.get_tuple(T, v) else self.get_object(T, v),
-            .Optional => |info| self.get_optional(info.child, v),
+            .Optional => |info| if (try self.type_of(v) == napi.napi_null) null else self.read(info.child, v),
             // TODO: better handling of pointers (not always going to leverage `wrap_object`)
-            .Pointer => |info| self.unwrap_object(info.child, v),
+            .Pointer => |info| switch (info.size) {
+                // handle by wrapping as user must define finalizer for `Napi::External` via hooks
+                .One => self.unwrap_object(info.child, v),
+                .C => {
+                    // if JS `TypedArray` equivalent exists, handle as such
+                    const data_type = info.child;
+                    return switch (data_type) {
+                        f32, f64, i8, i16, i32, i64, u8, u16, u32, u64 => self.get_typedarray_data(T, v),
+                        else => self.unwrap_object(info.child, v),
+                    };
+                },
+                // TODO: .Slice => self.read_array(info.child, v),
+                else => @compileError("reading " ++ @tagName(@typeInfo(T)) ++ " " ++ @typeName(T) ++ " is not supported"),
+            },
             else => @compileError("parsing " ++ @tagName(@typeInfo(T)) ++ " " ++ @typeName(T) ++ " is not supported"),
         };
     }
@@ -85,9 +116,17 @@ pub const JSCtx = struct {
             .Int, .ComptimeInt, .Float, .ComptimeFloat => self.create_number(v),
             .Enum => self.create_number(@as(u32, @enumToInt(v))),
             .Struct => if (trait.isTuple(T)) self.create_tuple(v) else self.create_object_from(v),
-            .Optional => self.create_optional(v),
+            .Optional => if (v) |val| self.write(val) else self.null(),
             // TODO: better handling of pointers (not always going to leverage `wrap_object`)
-            .Pointer => self.wrap_object(v),
+            .Pointer => |info| switch (info.size) {
+                .One => self.wrap_object(v),
+                .C => {
+                    // TODO: return as `TypedArray` if JS equivalent exists
+                    return try self.wrap_object(v);
+                },
+                .Slice => self.create_array_from(v),
+                else => @compileError("writing " ++ @tagName(@typeInfo(T)) ++ " " ++ @typeName(T) ++ " is not supported"),
+            },
             else => @compileError("returning " ++ @tagName(@typeInfo(T)) ++ " " ++ @typeName(T) ++ " is not supported"),
         };
     }
@@ -95,11 +134,15 @@ pub const JSCtx = struct {
     pub fn init(env: napi.napi_env) Error!*JSCtx {
         var self = try allocator.create(JSCtx);
         try err_check(napi.napi_set_instance_data(env, self, finalize, null));
-        self.* = .{ .env = env };
+        self.* = .{
+            .env = env,
+            .mem = TransientAllocator.init(allocator),
+        };
         return self;
     }
 
     pub fn deinit(self: *JSCtx) void {
+        self.mem.deinit();
         allocator.destroy(self);
     }
 
@@ -127,8 +170,8 @@ pub const JSCtx = struct {
         return self.undefined() catch @panic("throw return undefined");
     }
 
-    pub fn throw(self: *JSCtx, env: self.napi_env, comptime message: [:0]const u8) ConversionError {
-        var result = napi.napi_throw_error(env, null, message);
+    pub fn throw(self: *JSCtx, comptime message: [:0]const u8) ConversionError {
+        var result = napi.napi_throw_error(self.env, null, message);
         switch (result) {
             napi.napi_ok, napi.napi_pending_exception => {},
             else => unreachable,
@@ -175,7 +218,8 @@ pub const JSCtx = struct {
 
     pub fn get_number(self: *JSCtx, comptime T: type, v: napi.napi_value) Error!T {
         var res: T = undefined;
-        var loss: bool = undefined; // TODO: check overflow?
+        // TODO: throw error if unable to conver losslessly
+        var loss: bool = undefined;
         switch (T) {
             u8, u16 => res = @truncate(T, try self.get_number(u32, v)),
             u32, c_uint => try err_check(napi.napi_get_value_uint32(self.env, v, &res)),
@@ -205,17 +249,9 @@ pub const JSCtx = struct {
     pub fn get_string(self: *JSCtx, v: napi.napi_value) Error![]const u8 {
         var len: usize = undefined;
         try err_check(napi.napi_get_value_string_utf8(self.env, v, null, 0, &len));
-        var buf = try TEMP.alloc(u8, len + 1);
+        var buf = try self.mem.allocator().alloc(u8, len + 1);
         try err_check(napi.napi_get_value_string_utf8(self.env, v, @ptrCast([*c]u8, buf), buf.len, &len));
         return buf[0..len];
-    }
-
-    pub fn create_optional(self: *JSCtx, v: anytype) Error!napi.napi_value {
-        return if (v) |value| self.write(value, "") else self.null();
-    }
-
-    pub fn get_optional(self: *JSCtx, comptime T: type, v: napi.napi_value) Error!?T {
-        return if (try self.type_of(v) == napi.napi_null) null else self.parse(T, v, "");
     }
 
     pub fn create_array(self: *JSCtx) Error!napi.napi_value {
@@ -227,6 +263,14 @@ pub const JSCtx = struct {
     pub fn create_array_with_length(self: *JSCtx, len: u32) Error!napi.napi_value {
         var res: napi.napi_value = undefined;
         try err_check(napi.napi_create_array_with_length(self.env, len, &res));
+        return res;
+    }
+
+    pub fn create_array_from(self: *JSCtx, v: anytype) Error!napi.napi_value {
+        const res = try self.create_array_with_length(v.len);
+        for (v, 0..) |val, i| {
+            try self.set_element(res, i, try self.write(val));
+        }
         return res;
     }
 
@@ -346,6 +390,9 @@ pub const JSCtx = struct {
 
             fn call(env: napi.napi_env, cb: napi.napi_callback_info) callconv(.C) napi.napi_value {
                 var ctx = JSCtx.get_instance(env);
+                ctx.mem.inc();
+                // free any temp allocated mem after fn call
+                defer ctx.mem.dec();
                 const args = read_args(ctx, cb) catch |err| return ctx.create_error(err);
                 const res = @call(.auto, func, args);
                 if (comptime trait.is(.ErrorUnion)(Res)) {
@@ -407,7 +454,18 @@ pub const JSCtx = struct {
         return res;
     }
 
-    // TODO: create/get `ArrayBuffer`
+    // TODO: need to validate that this actually works
+    pub fn create_array_buffer(self: *JSCtx, v: anytype) Error!napi.napi_value {
+        var data: ?*anyopaque = undefined;
+        var res: napi.napi_value = undefined;
+        // let v8 allocate buffer and copy mem over
+        const T: type = @TypeOf(v[0]);
+        try err_check(napi.napi_create_arraybuffer(self.env, v.len * @sizeOf(T), &data, &res));
+        std.mem.copy(T, @ptrCast([*]T, data.?)[0..v.len], v[0..v.len]);
+        return res;
+    }
+
+    // TODO: get `ArrayBuffer`
 
     // TODO: create/get `Buffer`
     pub fn create_buffer(self: *JSCtx, v: []const u8) Error!napi.napi_value {
@@ -434,17 +492,18 @@ pub const JSCtx = struct {
         return @ptrCast([*c]u8, res.?);
     }
 
-    // TODO: create/get `TypedArray`
-    pub fn get_typed_array_length(self: *JSCtx, v: napi.napi_value) Error!usize {
+    pub fn get_typedarray_length(self: *JSCtx, v: napi.napi_value) Error!usize {
         var len: usize = undefined;
         try err_check(napi.napi_get_typedarray_info(self.env, v, null, &len, null, null, null));
         return len;
     }
 
-    pub fn get_typed_array_data(self: *JSCtx, comptime T: type, v: napi.napi_value) Error!T {
+    pub fn get_typedarray_data(self: *JSCtx, comptime T: type, v: napi.napi_value) Error!T {
         var res: ?*anyopaque = undefined;
         var len: usize = undefined;
         try err_check(napi.napi_get_typedarray_info(self.env, v, null, &len, &res, null, null));
         return @ptrCast(T, @alignCast(@alignOf(T), res.?));
     }
+
+    // TODO: create `TypedArray`
 };

@@ -33,7 +33,7 @@ fn finalize_tensor(env: napigen.napi_env, finalize_data: ?*anyopaque, finalize_h
 
 pub fn custom_arg_parser(js: *napigen.JSCtx, comptime T: type, v: napigen.napi_value, comptime name: []const u8) !T {
     if ((comptime std.mem.eql(u8, name, "fl_dtype") or std.mem.eql(u8, name, "fl_dispose")) and T == ?*anyopaque) {
-        std.debug.print("{any}\n", .{T});
+        // std.debug.print("{any}\n", .{T});
         return js.get_external(T, v);
     }
     return js.arg_parser(T, v, name);
