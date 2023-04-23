@@ -43,8 +43,7 @@ pub const JSCtx = struct {
 
     // parse hook (handles conversion: JS -> Native)
     pub const parse = if (@hasDecl(root, "customParser")) root.customParser else defaultParser;
-
-    pub fn defaultParser(self: *JSCtx, comptime T: type, v: napi.napi_value) Error!T {
+    pub fn defaultParser(self: *JSCtx, comptime T: type, v: napi.napi_value, _: []const u8) Error!T {
         if (T == napi.napi_value) return v;
         if (comptime trait.isZigString(T)) return self.get_string(v);
         std.debug.print("{any}\n", .{@typeInfo(T)});
@@ -75,7 +74,6 @@ pub const JSCtx = struct {
 
     // write hook (handles conversion: Native -> JS)
     pub const write = if (@hasDecl(root, "customWriter")) root.customWriter else defaultWriter;
-
     pub fn defaultWriter(self: *JSCtx, v: anytype, _: []const u8) Error!napi.napi_value {
         const T = @TypeOf(v);
         if (T == napi.napi_value) return v;
@@ -217,7 +215,7 @@ pub const JSCtx = struct {
     }
 
     pub fn get_optional(self: *JSCtx, comptime T: type, v: napi.napi_value) Error!?T {
-        return if (try self.type_of(v) == napi.napi_null) null else self.parse(T, v);
+        return if (try self.type_of(v) == napi.napi_null) null else self.parse(T, v, "");
     }
 
     pub fn create_array(self: *JSCtx) Error!napi.napi_value {
@@ -368,7 +366,7 @@ pub const JSCtx = struct {
                         @field(args, field.name) = ctx;
                         continue;
                     }
-                    @field(args, field.name) = try ctx.parse(field.type, arg_values[i]);
+                    @field(args, field.name) = try ctx.parse(field.type, arg_values[i], fn_name);
                     i += 1;
                 }
                 if (i != arg_count) {
@@ -403,9 +401,9 @@ pub const JSCtx = struct {
         return res;
     }
 
-    pub fn get_external(self: *JSCtx, comptime T: type, v: napi.napi_value) Error!*T {
-        var res: napi.napi_value = undefined;
-        try err_check(napi.napi_get_value_external(self.env, v, @ptrCast([*c]?*anyopaque, &res)));
+    pub fn get_external(self: *JSCtx, comptime T: type, v: napi.napi_value) Error!T {
+        var res: T = undefined;
+        try err_check(napi.napi_get_value_external(self.env, v, &res));
         return res;
     }
 

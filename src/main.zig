@@ -31,8 +31,16 @@ fn finalize_tensor(env: napigen.napi_env, finalize_data: ?*anyopaque, finalize_h
     return fl.fl_destroyTensor(finalize_data, finalize_hint);
 }
 
+pub fn customParser(js: *napigen.JSCtx, comptime T: type, v: napigen.napi_value, comptime name: []const u8) !T {
+    if (comptime std.mem.eql(u8, name, "fl_dtype")) {
+        std.debug.print("{any}\n", .{T});
+        return js.get_external(T, v);
+    }
+    return js.defaultParser(T, v, name);
+}
+
 pub fn customWriter(js: *napigen.JSCtx, v: anytype, comptime name: []const u8) !napigen.napi_value {
-    std.debug.print("fn name: {s}\n", .{name});
+    // std.debug.print("fn name: {s}\n", .{name});
     if (comptime std.mem.eql(u8, name, "fl_tensorFromFloat32Buffer")) {
         return js.create_external(@ptrCast(*anyopaque, @constCast(v)), finalize_tensor);
     }
