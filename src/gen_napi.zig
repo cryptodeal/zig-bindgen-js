@@ -42,8 +42,8 @@ pub const JSCtx = struct {
     // TODO: pass fn name to `parse` and `write` hooks
 
     // parse hook (handles conversion: JS -> Native)
-    pub const parse = if (@hasDecl(root, "customParser")) root.customParser else defaultParser;
-    pub fn defaultParser(self: *JSCtx, comptime T: type, v: napi.napi_value, _: []const u8) Error!T {
+    pub const parse = if (@hasDecl(root, "custom_arg_parser")) root.custom_arg_parser else arg_parser;
+    pub fn arg_parser(self: *JSCtx, comptime T: type, v: napi.napi_value, _: []const u8) Error!T {
         if (T == napi.napi_value) return v;
         if (comptime trait.isZigString(T)) return self.get_string(v);
         std.debug.print("{any}\n", .{@typeInfo(T)});
@@ -73,8 +73,8 @@ pub const JSCtx = struct {
     }
 
     // write hook (handles conversion: Native -> JS)
-    pub const write = if (@hasDecl(root, "customWriter")) root.customWriter else defaultWriter;
-    pub fn defaultWriter(self: *JSCtx, v: anytype, _: []const u8) Error!napi.napi_value {
+    pub const write = if (@hasDecl(root, "custom_return_handler")) root.custom_return_handler else return_handler;
+    pub fn return_handler(self: *JSCtx, v: anytype, _: []const u8) Error!napi.napi_value {
         const T = @TypeOf(v);
         if (T == napi.napi_value) return v;
         if (comptime trait.isZigString(T)) return self.create_string(v);
@@ -393,11 +393,11 @@ pub const JSCtx = struct {
         return res;
     }
 
-    // TODO: handle finalizer
-    pub fn create_external(self: *JSCtx, v: *anyopaque, finalizer: napi.napi_finalize) Error!napi.napi_value {
+    // TODO: integrate into the default handler?
+    pub fn create_external(self: *JSCtx, v: *anyopaque, finalizer: napi.napi_finalize, hint: ?*anyopaque) Error!napi.napi_value {
         if (comptime trait.isPtrTo(.Fn)(@TypeOf(v))) @compileError("use create_function() to export fn");
         var res: napi.napi_value = undefined;
-        try err_check(napi.napi_create_external(self.env, v, finalizer, null, &res));
+        try err_check(napi.napi_create_external(self.env, v, finalizer, hint, &res));
         return res;
     }
 
@@ -409,6 +409,31 @@ pub const JSCtx = struct {
 
     // TODO: create/get `ArrayBuffer`
 
+    // TODO: create/get `Buffer`
+    pub fn create_buffer(self: *JSCtx, v: []const u8) Error!napi.napi_value {
+        var data: ?*anyopaque = undefined;
+        var res: napi.napi_value = undefined;
+        // let v8 allocate buffer and copy mem over
+        try err_check(napi.napi_create_buffer(self.env, v.len, &data, &res));
+        std.mem.copy(u8, @ptrCast([*]u8, data.?)[0..v.len], v[0..v.len]);
+        return res;
+    }
+
+    /// Returns data from `node::Buffer` as slice.
+    pub fn get_buffer_as_slice(self: *JSCtx, v: napi.napi_value) Error![]u8 {
+        var res: ?*anyopaque = null;
+        var len: usize = undefined;
+        try err_check(napi.napi_get_buffer_info(self.env, v, &res, &len));
+        return @ptrCast([*]u8, res.?)[0..len];
+    }
+
+    pub fn get_buffer(self: *JSCtx, v: napi.napi_value) Error![*c]u8 {
+        var res: ?*anyopaque = null;
+        var len: usize = undefined;
+        try err_check(napi.napi_get_buffer_info(self.env, v, &res, &len));
+        return @ptrCast([*c]u8, res.?);
+    }
+
     // TODO: create/get `TypedArray`
     pub fn get_typed_array_length(self: *JSCtx, v: napi.napi_value) Error!usize {
         var len: usize = undefined;
@@ -417,7 +442,7 @@ pub const JSCtx = struct {
     }
 
     pub fn get_typed_array_data(self: *JSCtx, comptime T: type, v: napi.napi_value) Error!T {
-        var res: ?*anyopaque = null;
+        var res: ?*anyopaque = undefined;
         var len: usize = undefined;
         try err_check(napi.napi_get_typedarray_info(self.env, v, null, &len, &res, null, null));
         return @ptrCast(T, @alignCast(@alignOf(T), res.?));
