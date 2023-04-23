@@ -13,6 +13,7 @@ pub const ConversionError = error{ExceptionThrown};
 
 pub const allocator = std.heap.c_allocator;
 
+/// translates Node-API `napi_status` enum to relevant `Error` type
 pub fn err_check(status: napi.napi_status) Error!void {
     if (status != napi.napi_ok) {
         inline for (comptime std.meta.fieldNames(NapiErrorTypes)) |err| {
@@ -21,6 +22,7 @@ pub fn err_check(status: napi.napi_status) Error!void {
     }
 }
 
+/// utility for defining Node-API exports at comptime
 pub fn define_module(comptime init: fn (*JSCtx, napi.napi_value) Error!napi.napi_value) void {
     const NapiModule = struct {
         fn register(env: napi.napi_env, exports: napi.napi_value) callconv(.C) napi.napi_value {
@@ -33,20 +35,20 @@ pub fn define_module(comptime init: fn (*JSCtx, napi.napi_value) Error!napi.napi
 
 const TransientAllocator = struct {
     count: u32 = 0,
-    used_alloc: std.heap.ArenaAllocator,
+    backing_alloc: std.heap.ArenaAllocator,
 
     pub fn init(backing_allocator: std.mem.Allocator) TransientAllocator {
         return .{
-            .used_alloc = std.heap.ArenaAllocator.init(backing_allocator),
+            .backing_alloc = std.heap.ArenaAllocator.init(backing_allocator),
         };
     }
 
     pub fn deinit(self: *TransientAllocator) void {
-        self.used_alloc.deinit();
+        self.backing_alloc.deinit();
     }
 
     pub fn allocator(self: *TransientAllocator) std.mem.Allocator {
-        return self.used_alloc.allocator();
+        return self.backing_alloc.allocator();
     }
 
     pub fn inc(self: *TransientAllocator) void {
@@ -56,7 +58,7 @@ const TransientAllocator = struct {
     pub fn dec(self: *TransientAllocator) void {
         self.count -= 1;
         if (self.count == 0) {
-            _ = self.used_alloc.reset(.retain_capacity);
+            _ = self.backing_alloc.reset(.retain_capacity);
         }
     }
 };
@@ -96,7 +98,8 @@ pub const JSCtx = struct {
                         else => self.unwrap_object(info.child, v),
                     };
                 },
-                // TODO: .Slice => self.read_array(info.child, v),
+                // TODO: handle as `TypedArray` when possible
+                .Slice => self.get_array(info.child, v),
                 else => @compileError("reading " ++ @tagName(@typeInfo(T)) ++ " " ++ @typeName(T) ++ " is not supported"),
             },
             else => @compileError("parsing " ++ @tagName(@typeInfo(T)) ++ " " ++ @typeName(T) ++ " is not supported"),
@@ -131,6 +134,7 @@ pub const JSCtx = struct {
         };
     }
 
+    /// initialize new JSCtx instance
     pub fn init(env: napi.napi_env) Error!*JSCtx {
         var self = try allocator.create(JSCtx);
         try err_check(napi.napi_set_instance_data(env, self, finalize, null));
@@ -141,11 +145,13 @@ pub const JSCtx = struct {
         return self;
     }
 
+    /// deinitialize the JSCtx instance
     pub fn deinit(self: *JSCtx) void {
         self.mem.deinit();
         allocator.destroy(self);
     }
 
+    /// get `JSCtx` instance from Node-API `env`
     fn get_instance(env: napi.napi_env) *JSCtx {
         var res: *JSCtx = undefined;
         err_check(napi.napi_get_instance_data(env, @ptrCast([*c]?*anyopaque, &res))) catch @panic("could not get JS context");
@@ -156,12 +162,14 @@ pub const JSCtx = struct {
         get_instance(env).deinit();
     }
 
+    /// get type of JS value
     fn type_of(self: *JSCtx, v: napi.napi_value) Error!napi.napi_valuetype {
         var res: napi.napi_valuetype = undefined;
         try err_check(napi.napi_typeof(self.env, v, &res));
         return res;
     }
 
+    /// throws napi builtin error types
     pub fn create_error(self: *JSCtx, err: anyerror) napi.napi_value {
         const msg = @ptrCast([*c]const u8, @errorName(err));
         err_check(napi.napi_throw_error(self.env, null, msg)) catch |e| {
@@ -170,6 +178,7 @@ pub const JSCtx = struct {
         return self.undefined() catch @panic("throw return undefined");
     }
 
+    // TODO: use this to throw errors w custom messages
     pub fn throw(self: *JSCtx, comptime message: [:0]const u8) ConversionError {
         var result = napi.napi_throw_error(self.env, null, message);
         switch (result) {
@@ -179,30 +188,35 @@ pub const JSCtx = struct {
         return ConversionError.ExceptionThrown;
     }
 
+    // get JS `undefined`
     pub fn @"undefined"(self: *JSCtx) Error!napi.napi_value {
         var res: napi.napi_value = undefined;
         try err_check(napi.napi_get_undefined(self.env, &res));
         return res;
     }
 
+    /// get JS `null`
     pub fn @"null"(self: *JSCtx) Error!napi.napi_value {
         var res: napi.napi_value = undefined;
         try err_check(napi.napi_get_null(self.env, &res));
         return res;
     }
 
+    /// transform `bool` to JS `boolean`
     pub fn create_boolean(self: *JSCtx, v: bool) Error!napi.napi_value {
         var res: napi.napi_value = undefined;
         try err_check(napi.napi_get_boolean(self.env, v, &res));
         return res;
     }
 
+    /// parse JS `boolean` to `bool`
     pub fn get_boolean(self: *JSCtx, v: napi.napi_value) Error!bool {
         var res: bool = undefined;
         try err_check(napi.napi_get_value_bool(self.env, v, &res));
         return res;
     }
 
+    /// transform `T` (where `T` is native number type) to JS `number` or `bigint`
     pub fn create_number(self: *JSCtx, val: anytype) Error!napi.napi_value {
         var res: napi.napi_value = undefined;
         switch (@TypeOf(val)) {
@@ -216,9 +230,10 @@ pub const JSCtx = struct {
         return res;
     }
 
+    /// parse JS `number` or `bigint` to `T` (where `T` is native number type)
     pub fn get_number(self: *JSCtx, comptime T: type, v: napi.napi_value) Error!T {
         var res: T = undefined;
-        // TODO: throw error if unable to conver losslessly
+        // TODO: throw error if unable to convert losslessly
         var loss: bool = undefined;
         switch (T) {
             u8, u16 => res = @truncate(T, try self.get_number(u32, v)),
@@ -234,18 +249,21 @@ pub const JSCtx = struct {
         return res;
     }
 
+    /// transform `[]const u8` to JS `string`
     pub fn create_string(self: *JSCtx, v: []const u8) Error!napi.napi_value {
         var res: napi.napi_value = undefined;
         try err_check(napi.napi_create_string_utf8(self.env, @ptrCast([*c]const u8, v), v.len, &res));
         return res;
     }
 
+    /// get length of JS `string`
     pub fn get_string_length(self: *JSCtx, v: napi.napi_value) Error!usize {
         var res: usize = undefined;
         try err_check(napi.napi_get_value_string_utf8(self.env, v, null, 0, &res));
         return res;
     }
 
+    /// parse JS `string` to `[]const u8`
     pub fn get_string(self: *JSCtx, v: napi.napi_value) Error![]const u8 {
         var len: usize = undefined;
         try err_check(napi.napi_get_value_string_utf8(self.env, v, null, 0, &len));
@@ -254,18 +272,21 @@ pub const JSCtx = struct {
         return buf[0..len];
     }
 
+    /// creates new (empty) JS `Array` (equivalent to `[]` in JS)
     pub fn create_array(self: *JSCtx) Error!napi.napi_value {
         var res: napi.napi_value = undefined;
         try err_check(napi.napi_create_array(self.env, &res));
         return res;
     }
 
+    /// create JS `Array` with given length (equivalent to calling `new Array(len)` in JS)
     pub fn create_array_with_length(self: *JSCtx, len: u32) Error!napi.napi_value {
         var res: napi.napi_value = undefined;
         try err_check(napi.napi_create_array_with_length(self.env, len, &res));
         return res;
     }
 
+    /// transform native array/slice to JS `Array` (if no compatible `TypedArray` exists)
     pub fn create_array_from(self: *JSCtx, v: anytype) Error!napi.napi_value {
         const res = try self.create_array_with_length(v.len);
         for (v, 0..) |val, i| {
@@ -274,22 +295,39 @@ pub const JSCtx = struct {
         return res;
     }
 
+    /// get length (u32) of JS `Array`
     pub fn get_array_length(self: *JSCtx, v: napi.napi_value) Error!u32 {
         var res: u32 = undefined;
         try err_check(napi.napi_get_array_length(self.env, v, &res));
         return res;
     }
 
+    /// get value in JS `Array` at index `i`
     pub fn get_element(self: *JSCtx, v: napi.napi_value, i: u32) Error!napi.napi_value {
         var res: napi.napi_value = undefined;
         try err_check(napi.napi_get_element(self.env, v, i, &res));
         return res;
     }
 
+    /// set value in JS `Array` at index `i`
     pub fn set_element(self: *JSCtx, array: napi.napi_value, i: u32, v: napi.napi_value) Error!void {
         try err_check(napi.napi_set_element(self.env, array, i, v));
     }
 
+    /// parse JS `Array<T>` to `[]T`
+    pub fn get_array(self: *JSCtx, comptime T: type, v: napi.napi_value) Error!T {
+        var res: T = undefined;
+        const len = self.get_array_length(v);
+        const field_type = @typeInfo(T).Pointer.child;
+        comptime var i = 0;
+        inline while (i < len) : (i += 1) {
+            var tmp_val = try self.get_element(v, @truncate(u32, i));
+            res[i] = try self.parse(field_type, tmp_val);
+        }
+        return res;
+    }
+
+    /// transform `tuple` to JS `[T1, T2... etc]`
     pub fn create_tuple(self: *JSCtx, v: anytype) Error!napi.napi_value {
         const fields = std.meta.fields(@TypeOf(v));
         var res = try self.create_array_with_length(fields.len);
@@ -300,6 +338,7 @@ pub const JSCtx = struct {
         return res;
     }
 
+    /// parse JS `[T1, T2... etc]` to `tuple`
     pub fn get_tuple(self: *JSCtx, comptime T: type, v: napi.napi_value) Error!T {
         const fields = std.meta.fields(T);
         var res: T = undefined;
@@ -310,12 +349,14 @@ pub const JSCtx = struct {
         return res;
     }
 
+    /// creates new (empty) JS `Object` (equivalent to `{}` in JS)
     pub fn create_object(self: *JSCtx) Error!napi.napi_value {
         var res: napi.napi_value = undefined;
         try err_check(napi.napi_create_object(self.env, &res));
         return res;
     }
 
+    /// transform `struct` to JS `Object`
     pub fn create_object_from(self: *JSCtx, v: anytype) Error!napi.napi_value {
         var res: napi.napi_value = try self.create_object();
         inline for (std.meta.fields(@TypeOf(v))) |field| {
@@ -324,6 +365,7 @@ pub const JSCtx = struct {
         }
     }
 
+    /// parse `struct` from JS `Object`
     pub fn get_object(self: *JSCtx, comptime T: type, v: napi.napi_value) Error!T {
         var res: T = undefined;
         inline for (std.meta.fields(T)) |field| {
@@ -333,16 +375,19 @@ pub const JSCtx = struct {
         return res;
     }
 
+    /// set value at key (`string`) in JS `Object`
     pub fn set_named_property(self: *JSCtx, obj: napi.napi_value, key: [*:0]const u8, v: napi.napi_value) Error!void {
         try err_check(napi.napi_set_named_property(self.env, obj, key, v));
     }
 
+    /// retrieve value at key (`string`) in JS `Object`
     pub fn get_named_property(self: *JSCtx, obj: napi.napi_value, key: [*:0]const u8) Error!napi.napi_value {
         var res: napi.napi_value = undefined;
         try err_check(napi.napi_get_named_property(self.env, obj, key, &res));
         return res;
     }
 
+    /// transform `*T` to JS `ObjectWrap<T>`
     pub fn wrap_object(self: *JSCtx, v: anytype) Error!napi.napi_value {
         // no wrapping fn pointer as object
         if (comptime trait.isPtrTo(.Fn)(@TypeOf(v))) @compileError("use create_function() to export fn");
@@ -361,6 +406,7 @@ pub const JSCtx = struct {
         return res;
     }
 
+    /// parse JS `ObjectWrap<T>` to `*T`
     pub fn unwrap_object(self: *JSCtx, comptime T: type, v: napi.napi_value) Error!*T {
         var res: *T = undefined;
         try err_check(napi.napi_unwrap(self.env, v, @ptrCast([*c]?*anyopaque, &res)));
@@ -379,6 +425,7 @@ pub const JSCtx = struct {
         }
     }
 
+    /// creates JS function
     pub fn create_function(self: *JSCtx, comptime func: anytype, comptime name: []const u8) Error!napi.napi_value {
         const F = @TypeOf(func);
         const Args = std.meta.ArgsTuple(F);
@@ -429,6 +476,7 @@ pub const JSCtx = struct {
         return res;
     }
 
+    /// calls JS function
     pub fn call_function(self: *JSCtx, r: napi.napi_value, func: napi.napi_value, args: anytype) Error!napi.napi_value {
         const Args = @TypeOf(args);
         var arg_values: [std.meta.fields(Args).len]napi.napi_value = undefined;
@@ -440,7 +488,7 @@ pub const JSCtx = struct {
         return res;
     }
 
-    // TODO: integrate into the default handler?
+    /// return `*T` as JS `External<T>`
     pub fn create_external(self: *JSCtx, v: *anyopaque, finalizer: napi.napi_finalize, hint: ?*anyopaque) Error!napi.napi_value {
         if (comptime trait.isPtrTo(.Fn)(@TypeOf(v))) @compileError("use create_function() to export fn");
         var res: napi.napi_value = undefined;
@@ -448,36 +496,40 @@ pub const JSCtx = struct {
         return res;
     }
 
+    /// parse JS `External<T>` to `*T`
     pub fn get_external(self: *JSCtx, comptime T: type, v: napi.napi_value) Error!T {
         var res: T = undefined;
         try err_check(napi.napi_get_value_external(self.env, v, &res));
         return res;
     }
-
-    // TODO: need to validate that this actually works
-    pub fn create_array_buffer(self: *JSCtx, v: anytype) Error!napi.napi_value {
-        var data: ?*anyopaque = undefined;
-        var res: napi.napi_value = undefined;
-        // let v8 allocate buffer and copy mem over
-        const T: type = @TypeOf(v[0]);
-        try err_check(napi.napi_create_arraybuffer(self.env, v.len * @sizeOf(T), &data, &res));
-        std.mem.copy(T, @ptrCast([*]T, data.?)[0..v.len], v[0..v.len]);
-        return res;
-    }
-
     // TODO: get `ArrayBuffer`
 
-    // TODO: create/get `Buffer`
-    pub fn create_buffer(self: *JSCtx, v: []const u8) Error!napi.napi_value {
+    pub fn create_arraybuffer(self: *JSCtx, v: []const u8) Error!napi.napi_value {
         var data: ?*anyopaque = undefined;
         var res: napi.napi_value = undefined;
-        // let v8 allocate buffer and copy mem over
-        try err_check(napi.napi_create_buffer(self.env, v.len, &data, &res));
+        // TODO: avoid the copy?
+        try err_check(napi.napi_create_arraybuffer(self.env, v.len, &data, &res));
         std.mem.copy(u8, @ptrCast([*]u8, data.?)[0..v.len], v[0..v.len]);
         return res;
     }
 
-    /// Returns data from `node::Buffer` as slice.
+    pub fn create_buffer(self: *JSCtx, v: []const u8) Error!napi.napi_value {
+        var data: ?*anyopaque = undefined;
+        var res: napi.napi_value = undefined;
+        try err_check(napi.napi_create_buffer(self.env, v.len, &data, &res));
+        // TODO: avoid the copy?
+        std.mem.copy(u8, @ptrCast([*]u8, data.?)[0..v.len], v[0..v.len]);
+        return res;
+    }
+
+    /// transform `[]u8` slice to JS `Buffer` (copy/JS owns mem)
+    pub fn create_buffer_copy(self: *JSCtx, v: []const u8) Error!napi.napi_value {
+        var res: napi.napi_value = undefined;
+        try err_check(napi.napi_create_buffer_copy(self.env, v.len, v.ptr, null, &res));
+        return res;
+    }
+
+    /// parse JS `Buffer` to `[]u8` slice
     pub fn get_buffer_as_slice(self: *JSCtx, v: napi.napi_value) Error![]u8 {
         var res: ?*anyopaque = null;
         var len: usize = undefined;
@@ -485,6 +537,7 @@ pub const JSCtx = struct {
         return @ptrCast([*]u8, res.?)[0..len];
     }
 
+    /// parse JS `Buffer` to `[*c]u8`
     pub fn get_buffer(self: *JSCtx, v: napi.napi_value) Error![*c]u8 {
         var res: ?*anyopaque = null;
         var len: usize = undefined;
@@ -492,12 +545,14 @@ pub const JSCtx = struct {
         return @ptrCast([*c]u8, res.?);
     }
 
+    /// get length of JS `TypedArray`
     pub fn get_typedarray_length(self: *JSCtx, v: napi.napi_value) Error!usize {
         var len: usize = undefined;
         try err_check(napi.napi_get_typedarray_info(self.env, v, null, &len, null, null, null));
         return len;
     }
 
+    /// parse JS `TypedArray` to relevant C Array (e.g. `Float32Array` -> `[*c]f32`)
     pub fn get_typedarray_data(self: *JSCtx, comptime T: type, v: napi.napi_value) Error!T {
         var res: ?*anyopaque = undefined;
         var len: usize = undefined;
