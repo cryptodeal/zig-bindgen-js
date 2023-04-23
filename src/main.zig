@@ -1,21 +1,40 @@
 const std = @import("std");
-const c = @import("c.zig");
-const napi_utils = @import("napi_utils.zig");
+const napigen = @import("./gen_napi.zig");
 const fl = @cImport({
     @cInclude("flashlight_binding.h");
 });
 
-export fn napi_register_module_v1(env: c.napi_env, exports: c.napi_value) c.napi_value {
-    napi_utils.register_function(env, exports, "bytesUsed", bytesUsed) catch return null;
+comptime {
+    napigen.define_module(initModule);
+}
+
+fn initModule(js: *napigen.JSCtx, exports: napigen.napi_value) !napigen.napi_value {
+    @setEvalBranchQuota(100_000);
+    inline for (comptime std.meta.declarations(fl)) |d| {
+        // functions
+        if (comptime std.mem.startsWith(u8, d.name, "fl_")) {
+            if (comptime std.mem.eql(u8, d.name, "fl_destroyTensor")) continue;
+
+            const T = @TypeOf(@field(fl, d.name));
+
+            if (@typeInfo(T) == .Fn) {
+                try js.set_named_property(exports, "" ++ d.name, try js.create_function(@field(fl, d.name), d.name));
+            }
+        }
+    }
+
     return exports;
 }
 
-fn bytesUsed(env: c.napi_env, info: c.napi_callback_info) callconv(.C) c.napi_value {
-    _ = info;
-    var result: c.napi_value = undefined;
-    if (c.napi_create_int64(env, @bitCast(i64, fl.bytesUsed()), &result) != c.napi_ok) {
-        napi_utils.throw(env, "Failed to get args.") catch return null;
-    }
+fn finalize_tensor(env: napigen.napi_env, finalize_data: ?*anyopaque, finalize_hint: ?*anyopaque) callconv(.C) void {
+    _ = env;
+    return fl.fl_destroyTensor(finalize_data, finalize_hint);
+}
 
-    return result;
+pub fn customWriter(js: *napigen.JSCtx, v: anytype, comptime name: []const u8) !napigen.napi_value {
+    std.debug.print("fn name: {s}\n", .{name});
+    if (comptime std.mem.eql(u8, name, "fl_tensorFromFloat32Buffer")) {
+        return js.create_external(@ptrCast(*anyopaque, @constCast(v)), finalize_tensor);
+    }
+    return js.defaultWriter(v, name);
 }

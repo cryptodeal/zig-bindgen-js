@@ -1,6 +1,3 @@
-[submodule "libs/zig-napigen"]
-	path = libs/zig-napigen
-	url = https://github.com/cztomsik/zig-napigen
 [submodule "libs/napi-headers"]
 	path = libs/napi-headers
 	url = https://github.com/nodejs/node-api-headers

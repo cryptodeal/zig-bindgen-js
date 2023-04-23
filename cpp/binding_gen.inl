@@ -1,5 +1,5 @@
 
-void* _rand(void* shape_ptr, int64_t shape_len) {
+void* fl_rand(void* shape_ptr, int64_t shape_len) {
   try {
     LOCK_GUARD
 
@@ -15,7 +15,7 @@ void* _rand(void* shape_ptr, int64_t shape_len) {
   }
 }
 
-void* _randn(void* shape_ptr, int64_t shape_len) {
+void* fl_randn(void* shape_ptr, int64_t shape_len) {
   try {
     LOCK_GUARD
 
@@ -31,7 +31,7 @@ void* _randn(void* shape_ptr, int64_t shape_len) {
   }
 }
 
-void* _full(void* shape_ptr, int64_t shape_len, float val) {
+void* fl_full(void* shape_ptr, int64_t shape_len, float val) {
   try {
     LOCK_GUARD
 
@@ -47,7 +47,7 @@ void* _full(void* shape_ptr, int64_t shape_len, float val) {
   }
 }
 
-void* _identity(int64_t dim) {
+void* fl_identity(int64_t dim) {
   try {
     LOCK_GUARD
 
@@ -62,7 +62,7 @@ void* _identity(int64_t dim) {
   }
 }
 
-void* _arange(float start, float end, float step) {
+void* fl_arange(float start, float end, float step) {
   try {
     LOCK_GUARD
 
@@ -77,7 +77,7 @@ void* _arange(float start, float end, float step) {
   }
 }
 
-void* _iota(void* dims_ptr,
+void* fl_iota(void* dims_ptr,
             int64_t dims_len,
             void* tileDims_ptr,
             int64_t tileDims_len) {
@@ -98,7 +98,7 @@ void* _iota(void* dims_ptr,
   }
 }
 
-void* _reshape(void* tensor, void* shape_ptr, int64_t shape_len) {
+void* fl_reshape(void* tensor, void* shape_ptr, int64_t shape_len) {
   try {
     LOCK_GUARD
 
@@ -115,7 +115,7 @@ void* _reshape(void* tensor, void* shape_ptr, int64_t shape_len) {
   }
 }
 
-void* _transpose(void* tensor, void* axes_ptr, int64_t axes_len) {
+void* fl_transpose(void* tensor, void* axes_ptr, int64_t axes_len) {
   try {
     LOCK_GUARD
 
@@ -133,7 +133,7 @@ void* _transpose(void* tensor, void* axes_ptr, int64_t axes_len) {
   }
 }
 
-void* _tile(void* tensor, void* shape_ptr, int64_t shape_len) {
+void* fl_tile(void* tensor, void* shape_ptr, int64_t shape_len) {
   try {
     LOCK_GUARD
 
@@ -150,7 +150,7 @@ void* _tile(void* tensor, void* shape_ptr, int64_t shape_len) {
   }
 }
 
-void* _concatenate(void* tensors_ptr, int64_t tensors_len, int32_t axis) {
+void* fl_concatenate(void* tensors_ptr, int64_t tensors_len, int32_t axis) {
   try {
     LOCK_GUARD
 
@@ -167,7 +167,7 @@ void* _concatenate(void* tensors_ptr, int64_t tensors_len, int32_t axis) {
   }
 }
 
-void* _nonzero(void* tensor) {
+void* fl_nonzero(void* tensor) {
   try {
     LOCK_GUARD
 
@@ -183,7 +183,7 @@ void* _nonzero(void* tensor) {
   }
 }
 
-void* _negative(void* tensor) {
+void* fl_negative(void* tensor) {
   try {
     LOCK_GUARD
 
@@ -199,7 +199,7 @@ void* _negative(void* tensor) {
   }
 }
 
-void* _logicalNot(void* tensor) {
+void* fl_logicalNot(void* tensor) {
   try {
     LOCK_GUARD
 
@@ -215,7 +215,7 @@ void* _logicalNot(void* tensor) {
   }
 }
 
-void* _exp(void* tensor) {
+void* fl_exp(void* tensor) {
   try {
     LOCK_GUARD
 
@@ -231,7 +231,7 @@ void* _exp(void* tensor) {
   }
 }
 
-void* _log(void* tensor) {
+void* fl_log(void* tensor) {
   try {
     LOCK_GUARD
 
@@ -247,7 +247,7 @@ void* _log(void* tensor) {
   }
 }
 
-void* _log1p(void* tensor) {
+void* fl_log1p(void* tensor) {
   try {
     LOCK_GUARD
 
@@ -263,7 +263,7 @@ void* _log1p(void* tensor) {
   }
 }
 
-void* _sin(void* tensor) {
+void* fl_sin(void* tensor) {
   try {
     LOCK_GUARD
 
@@ -279,7 +279,7 @@ void* _sin(void* tensor) {
   }
 }
 
-void* _cos(void* tensor) {
+void* fl_cos(void* tensor) {
   try {
     LOCK_GUARD
 
@@ -295,7 +295,7 @@ void* _cos(void* tensor) {
   }
 }
 
-void* _sqrt(void* tensor) {
+void* fl_sqrt(void* tensor) {
   try {
     LOCK_GUARD
 
@@ -311,7 +311,7 @@ void* _sqrt(void* tensor) {
   }
 }
 
-void* _tanh(void* tensor) {
+void* fl_tanh(void* tensor) {
   try {
     LOCK_GUARD
 
@@ -327,7 +327,7 @@ void* _tanh(void* tensor) {
   }
 }
 
-void* _floor(void* tensor) {
+void* fl_floor(void* tensor) {
   try {
     LOCK_GUARD
 
@@ -343,7 +343,7 @@ void* _floor(void* tensor) {
   }
 }
 
-void* _ceil(void* tensor) {
+void* fl_ceil(void* tensor) {
   try {
     LOCK_GUARD
 
@@ -359,7 +359,7 @@ void* _ceil(void* tensor) {
   }
 }
 
-void* _rint(void* tensor) {
+void* fl_rint(void* tensor) {
   try {
     LOCK_GUARD
 
@@ -375,7 +375,7 @@ void* _rint(void* tensor) {
   }
 }
 
-void* _absolute(void* tensor) {
+void* fl_absolute(void* tensor) {
   try {
     LOCK_GUARD
 
@@ -391,7 +391,7 @@ void* _absolute(void* tensor) {
   }
 }
 
-void* _sigmoid(void* tensor) {
+void* fl_sigmoid(void* tensor) {
   try {
     LOCK_GUARD
 
@@ -407,7 +407,7 @@ void* _sigmoid(void* tensor) {
   }
 }
 
-void* _erf(void* tensor) {
+void* fl_erf(void* tensor) {
   try {
     LOCK_GUARD
 
@@ -423,7 +423,7 @@ void* _erf(void* tensor) {
   }
 }
 
-void* _flip(void* tensor, uint32_t dim) {
+void* fl_flip(void* tensor, uint32_t dim) {
   try {
     LOCK_GUARD
 
@@ -439,7 +439,7 @@ void* _flip(void* tensor, uint32_t dim) {
   }
 }
 
-void* _clip(void* tensor, void* low, void* high) {
+void* fl_clip(void* tensor, void* low, void* high) {
   try {
     LOCK_GUARD
 
@@ -457,7 +457,7 @@ void* _clip(void* tensor, void* low, void* high) {
   }
 }
 
-void* _roll(void* tensor, int shift, int32_t axis) {
+void* fl_roll(void* tensor, int shift, int32_t axis) {
   try {
     LOCK_GUARD
 
@@ -474,7 +474,7 @@ void* _roll(void* tensor, int shift, int32_t axis) {
   }
 }
 
-void* _isnan(void* tensor) {
+void* fl_isnan(void* tensor) {
   try {
     LOCK_GUARD
 
@@ -490,7 +490,7 @@ void* _isnan(void* tensor) {
   }
 }
 
-void* _isinf(void* tensor) {
+void* fl_isinf(void* tensor) {
   try {
     LOCK_GUARD
 
@@ -506,7 +506,7 @@ void* _isinf(void* tensor) {
   }
 }
 
-void* _sign(void* tensor) {
+void* fl_sign(void* tensor) {
   try {
     LOCK_GUARD
 
@@ -522,7 +522,7 @@ void* _sign(void* tensor) {
   }
 }
 
-void* _tril(void* tensor) {
+void* fl_tril(void* tensor) {
   try {
     LOCK_GUARD
 
@@ -542,7 +542,7 @@ void* _tril(void* tensor) {
   }
 }
 
-void* _triu(void* tensor) {
+void* fl_triu(void* tensor) {
   try {
     LOCK_GUARD
 
@@ -562,7 +562,7 @@ void* _triu(void* tensor) {
   }
 }
 
-void* _where(void* cond, void* x, void* y) {
+void* fl_where(void* cond, void* x, void* y) {
   try {
     LOCK_GUARD
 
@@ -580,7 +580,7 @@ void* _where(void* cond, void* x, void* y) {
   }
 }
 
-void* _sort(void* tensor, uint32_t dim) {
+void* fl_sort(void* tensor, uint32_t dim) {
   try {
     LOCK_GUARD
 
@@ -596,7 +596,7 @@ void* _sort(void* tensor, uint32_t dim) {
   }
 }
 
-void* _add(void* tensor, void* other) {
+void* fl_add(void* tensor, void* other) {
   try {
     LOCK_GUARD
 
@@ -613,7 +613,7 @@ void* _add(void* tensor, void* other) {
   }
 }
 
-void* _sub(void* tensor, void* other) {
+void* fl_sub(void* tensor, void* other) {
   try {
     LOCK_GUARD
 
@@ -630,7 +630,7 @@ void* _sub(void* tensor, void* other) {
   }
 }
 
-void* _mul(void* tensor, void* other) {
+void* fl_mul(void* tensor, void* other) {
   try {
     LOCK_GUARD
 
@@ -647,7 +647,7 @@ void* _mul(void* tensor, void* other) {
   }
 }
 
-void* _div(void* tensor, void* other) {
+void* fl_div(void* tensor, void* other) {
   try {
     LOCK_GUARD
 
@@ -664,7 +664,7 @@ void* _div(void* tensor, void* other) {
   }
 }
 
-void* _eq(void* tensor, void* other) {
+void* fl_eq(void* tensor, void* other) {
   try {
     LOCK_GUARD
 
@@ -681,7 +681,7 @@ void* _eq(void* tensor, void* other) {
   }
 }
 
-void* _neq(void* tensor, void* other) {
+void* fl_neq(void* tensor, void* other) {
   try {
     LOCK_GUARD
 
@@ -698,7 +698,7 @@ void* _neq(void* tensor, void* other) {
   }
 }
 
-void* _lessThan(void* tensor, void* other) {
+void* fl_lessThan(void* tensor, void* other) {
   try {
     LOCK_GUARD
 
@@ -715,7 +715,7 @@ void* _lessThan(void* tensor, void* other) {
   }
 }
 
-void* _lessThanEqual(void* tensor, void* other) {
+void* fl_lessThanEqual(void* tensor, void* other) {
   try {
     LOCK_GUARD
 
@@ -732,7 +732,7 @@ void* _lessThanEqual(void* tensor, void* other) {
   }
 }
 
-void* _greaterThan(void* tensor, void* other) {
+void* fl_greaterThan(void* tensor, void* other) {
   try {
     LOCK_GUARD
 
@@ -749,7 +749,7 @@ void* _greaterThan(void* tensor, void* other) {
   }
 }
 
-void* _greaterThanEqual(void* tensor, void* other) {
+void* fl_greaterThanEqual(void* tensor, void* other) {
   try {
     LOCK_GUARD
 
@@ -766,7 +766,7 @@ void* _greaterThanEqual(void* tensor, void* other) {
   }
 }
 
-void* _logicalOr(void* tensor, void* other) {
+void* fl_logicalOr(void* tensor, void* other) {
   try {
     LOCK_GUARD
 
@@ -783,7 +783,7 @@ void* _logicalOr(void* tensor, void* other) {
   }
 }
 
-void* _logicalAnd(void* tensor, void* other) {
+void* fl_logicalAnd(void* tensor, void* other) {
   try {
     LOCK_GUARD
 
@@ -800,7 +800,7 @@ void* _logicalAnd(void* tensor, void* other) {
   }
 }
 
-void* _mod(void* tensor, void* other) {
+void* fl_mod(void* tensor, void* other) {
   try {
     LOCK_GUARD
 
@@ -817,7 +817,7 @@ void* _mod(void* tensor, void* other) {
   }
 }
 
-void* _bitwiseAnd(void* tensor, void* other) {
+void* fl_bitwiseAnd(void* tensor, void* other) {
   try {
     LOCK_GUARD
 
@@ -834,7 +834,7 @@ void* _bitwiseAnd(void* tensor, void* other) {
   }
 }
 
-void* _bitwiseOr(void* tensor, void* other) {
+void* fl_bitwiseOr(void* tensor, void* other) {
   try {
     LOCK_GUARD
 
@@ -851,7 +851,7 @@ void* _bitwiseOr(void* tensor, void* other) {
   }
 }
 
-void* _bitwiseXor(void* tensor, void* other) {
+void* fl_bitwiseXor(void* tensor, void* other) {
   try {
     LOCK_GUARD
 
@@ -868,7 +868,7 @@ void* _bitwiseXor(void* tensor, void* other) {
   }
 }
 
-void* _lShift(void* tensor, void* other) {
+void* fl_lShift(void* tensor, void* other) {
   try {
     LOCK_GUARD
 
@@ -885,7 +885,7 @@ void* _lShift(void* tensor, void* other) {
   }
 }
 
-void* _rShift(void* tensor, void* other) {
+void* fl_rShift(void* tensor, void* other) {
   try {
     LOCK_GUARD
 
@@ -902,7 +902,7 @@ void* _rShift(void* tensor, void* other) {
   }
 }
 
-void* _minimum(void* tensor, void* other) {
+void* fl_minimum(void* tensor, void* other) {
   try {
     LOCK_GUARD
 
@@ -919,7 +919,7 @@ void* _minimum(void* tensor, void* other) {
   }
 }
 
-void* _maximum(void* tensor, void* other) {
+void* fl_maximum(void* tensor, void* other) {
   try {
     LOCK_GUARD
 
@@ -936,7 +936,7 @@ void* _maximum(void* tensor, void* other) {
   }
 }
 
-void* _power(void* tensor, void* other) {
+void* fl_power(void* tensor, void* other) {
   try {
     LOCK_GUARD
 
@@ -953,7 +953,7 @@ void* _power(void* tensor, void* other) {
   }
 }
 
-void* _matmul(void* tensor, void* other) {
+void* fl_matmul(void* tensor, void* other) {
   try {
     LOCK_GUARD
 
@@ -974,7 +974,7 @@ void* _matmul(void* tensor, void* other) {
   }
 }
 
-void* _conv2d(void* tensor,
+void* fl_conv2d(void* tensor,
               void* weights,
               int32_t sx,
               int32_t sy,
@@ -999,7 +999,7 @@ void* _conv2d(void* tensor,
   }
 }
 
-void* _amin(void* tensor, void* axes_ptr, int64_t axes_len, bool keep_dims) {
+void* fl_amin(void* tensor, void* axes_ptr, int64_t axes_len, bool keep_dims) {
   try {
     LOCK_GUARD
 
@@ -1034,7 +1034,7 @@ void* _amin(void* tensor, void* axes_ptr, int64_t axes_len, bool keep_dims) {
   }
 }
 
-void* _amax(void* tensor, void* axes_ptr, int64_t axes_len, bool keep_dims) {
+void* fl_amax(void* tensor, void* axes_ptr, int64_t axes_len, bool keep_dims) {
   try {
     LOCK_GUARD
 
@@ -1069,7 +1069,7 @@ void* _amax(void* tensor, void* axes_ptr, int64_t axes_len, bool keep_dims) {
   }
 }
 
-void* _argmin(void* tensor, int32_t axis, bool keep_dims) {
+void* fl_argmin(void* tensor, int32_t axis, bool keep_dims) {
   try {
     LOCK_GUARD
 
@@ -1102,7 +1102,7 @@ void* _argmin(void* tensor, int32_t axis, bool keep_dims) {
   }
 }
 
-void* _argmax(void* tensor, int32_t axis, bool keep_dims) {
+void* fl_argmax(void* tensor, int32_t axis, bool keep_dims) {
   try {
     LOCK_GUARD
 
@@ -1135,7 +1135,7 @@ void* _argmax(void* tensor, int32_t axis, bool keep_dims) {
   }
 }
 
-void* _sum(void* tensor, void* axes_ptr, int64_t axes_len, bool keep_dims) {
+void* fl_sum(void* tensor, void* axes_ptr, int64_t axes_len, bool keep_dims) {
   try {
     LOCK_GUARD
 
@@ -1170,7 +1170,7 @@ void* _sum(void* tensor, void* axes_ptr, int64_t axes_len, bool keep_dims) {
   }
 }
 
-void* _cumsum(void* tensor, int32_t axis) {
+void* fl_cumsum(void* tensor, int32_t axis) {
   try {
     LOCK_GUARD
 
@@ -1187,7 +1187,7 @@ void* _cumsum(void* tensor, int32_t axis) {
   }
 }
 
-void* _mean(void* tensor, void* axes_ptr, int64_t axes_len, bool keep_dims) {
+void* fl_mean(void* tensor, void* axes_ptr, int64_t axes_len, bool keep_dims) {
   try {
     LOCK_GUARD
 
@@ -1222,7 +1222,7 @@ void* _mean(void* tensor, void* axes_ptr, int64_t axes_len, bool keep_dims) {
   }
 }
 
-void* _median(void* tensor, void* axes_ptr, int64_t axes_len, bool keep_dims) {
+void* fl_median(void* tensor, void* axes_ptr, int64_t axes_len, bool keep_dims) {
   try {
     LOCK_GUARD
 
@@ -1257,7 +1257,7 @@ void* _median(void* tensor, void* axes_ptr, int64_t axes_len, bool keep_dims) {
   }
 }
 
-void* _var(void* tensor,
+void* fl_var(void* tensor,
            void* axes_ptr,
            int64_t axes_len,
            bool bias,
@@ -1296,7 +1296,7 @@ void* _var(void* tensor,
   }
 }
 
-void* _std(void* tensor, void* axes_ptr, int64_t axes_len, bool keep_dims) {
+void* fl_std(void* tensor, void* axes_ptr, int64_t axes_len, bool keep_dims) {
   try {
     LOCK_GUARD
 
@@ -1331,7 +1331,7 @@ void* _std(void* tensor, void* axes_ptr, int64_t axes_len, bool keep_dims) {
   }
 }
 
-void* _norm(void* tensor,
+void* fl_norm(void* tensor,
             void* axes_ptr,
             int64_t axes_len,
             double p,
@@ -1375,7 +1375,7 @@ void* _norm(void* tensor,
   }
 }
 
-void* _countNonzero(void* tensor,
+void* fl_countNonzero(void* tensor,
                     void* axes_ptr,
                     int64_t axes_len,
                     bool keep_dims) {
@@ -1413,7 +1413,7 @@ void* _countNonzero(void* tensor,
   }
 }
 
-void* _any(void* tensor, void* axes_ptr, int64_t axes_len, bool keep_dims) {
+void* fl_any(void* tensor, void* axes_ptr, int64_t axes_len, bool keep_dims) {
   try {
     LOCK_GUARD
 
@@ -1448,7 +1448,7 @@ void* _any(void* tensor, void* axes_ptr, int64_t axes_len, bool keep_dims) {
   }
 }
 
-void* _all(void* tensor, void* axes_ptr, int64_t axes_len, bool keep_dims) {
+void* fl_all(void* tensor, void* axes_ptr, int64_t axes_len, bool keep_dims) {
   try {
     LOCK_GUARD
 

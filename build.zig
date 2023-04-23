@@ -26,7 +26,6 @@ pub fn build(b: *std.Build) void {
 
     // weak-linkage
     lib.linker_allow_shlib_undefined = true;
-    // lib.addAnonymousModule("napigen", .{ .source_file = .{ .path = "libs/zig-napigen/napigen.zig" } });
     lib.addLibraryPath(".");
     lib.addRPath(".");
     lib.linkSystemLibrary("flashlight_binding");
@@ -46,13 +45,11 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     main_tests.linker_allow_shlib_undefined = true;
-    main_tests.addAnonymousModule("napigen", .{ .source_file = .{ .path = "libs/zig-napigen/napigen.zig" } });
     main_tests.addLibraryPath(".");
     main_tests.addRPath(".");
     main_tests.linkSystemLibrary("flashlight_binding");
     main_tests.addIncludePath("cpp");
     main_tests.linkLibC();
-    main_tests.linkLibCpp();
 
     // This creates a build step. It will be visible in the `zig build --help` menu,
     // and can be selected like this: `zig build test`

@@ -1,0 +1,8 @@
+{
+  "methods": [
+    "init",
+    "_dtype",
+    "dtypeFloat16",
+    "tensorFromFloat32Buffer"
+  ]
+}

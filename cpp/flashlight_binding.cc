@@ -87,15 +87,15 @@ uint32_t axisArg(int32_t axis, bool reverse, int ndim) {
 }
 
 extern "C" {
-void init() {
+void fl_init() {
   fl::init();
 }
 
-size_t bytesUsed() {
+size_t fl_bytesUsed() {
   return g_bytes_used;
 }
 
-void* createTensor(void* shape_ptr, int64_t shape_len) {
+void* fl_createTensor(void* shape_ptr, int64_t shape_len) {
   try {
     LOCK_GUARD
     static_assert(sizeof(long long) == sizeof(int64_t));
@@ -111,7 +111,7 @@ void* createTensor(void* shape_ptr, int64_t shape_len) {
 }
 
 // TODO use DLM destructor
-void* fromDLTensor(void* ptr) {
+void* fl_fromDLTensor(void* ptr) {
   auto* dlmtensor = (DLManagedTensor*)ptr;
   auto& dltensor = dlmtensor->dl_tensor;
   auto shape =
@@ -169,7 +169,7 @@ void* fromDLTensor(void* ptr) {
   return t;
 }
 
-void deleteDLTensor(struct DLManagedTensor* self) {
+void fl_deleteDLTensor(struct DLManagedTensor* self) {
   auto* tensor = reinterpret_cast<fl::Tensor*>(self->manager_ctx);
   g_bytes_used -= tensor->bytes();
   tensor->unlock();
@@ -178,7 +178,7 @@ void deleteDLTensor(struct DLManagedTensor* self) {
   delete self;
 }
 
-void* toDLTensor(void* ptr) {
+void* fl_toDLTensor(void* ptr) {
   LOCK_GUARD
   DLManagedTensor* dlmtensor = new DLManagedTensor();
   DLTensor& dltensor = dlmtensor->dl_tensor;
@@ -216,11 +216,11 @@ void* toDLTensor(void* ptr) {
     dltensor.shape[i] = tensor->shape()[fl_i];
   }
   dlmtensor->manager_ctx = (void*)tensor;
-  dlmtensor->deleter = deleteDLTensor;
+  dlmtensor->deleter = fl_deleteDLTensor;
   return dlmtensor;
 }
 
-void* tensorFromFloat16Buffer(int64_t numel, void* ptr) {
+void* fl_tensorFromFloat16Buffer(int64_t numel, void* ptr) {
   try {
     LOCK_GUARD
     auto* t = new fl::Tensor(
@@ -235,7 +235,7 @@ void* tensorFromFloat16Buffer(int64_t numel, void* ptr) {
   }
 }
 
-void* tensorFromFloat32Buffer(int64_t numel, void* ptr) {
+void* fl_tensorFromFloat32Buffer(int64_t numel, void* ptr) {
   try {
     LOCK_GUARD
     auto* t = new fl::Tensor(
@@ -249,7 +249,7 @@ void* tensorFromFloat32Buffer(int64_t numel, void* ptr) {
   }
 }
 
-void* tensorFromFloat64Buffer(int64_t numel, void* ptr) {
+void* fl_tensorFromFloat64Buffer(int64_t numel, void* ptr) {
   try {
     LOCK_GUARD
     auto* t = new fl::Tensor(fl::Tensor::fromBuffer({numel}, (double*)ptr,
@@ -263,7 +263,7 @@ void* tensorFromFloat64Buffer(int64_t numel, void* ptr) {
   }
 }
 
-void* tensorFromInt8Buffer(int64_t numel, void* ptr) {
+void* fl_tensorFromInt8Buffer(int64_t numel, void* ptr) {
   try {
     LOCK_GUARD
     auto* t = new fl::Tensor(
@@ -277,7 +277,7 @@ void* tensorFromInt8Buffer(int64_t numel, void* ptr) {
   }
 }
 
-void* tensorFromInt16Buffer(int64_t numel, void* ptr) {
+void* fl_tensorFromInt16Buffer(int64_t numel, void* ptr) {
   try {
     LOCK_GUARD
     auto* t = new fl::Tensor(fl::Tensor::fromBuffer({numel}, (int16_t*)ptr,
@@ -291,7 +291,7 @@ void* tensorFromInt16Buffer(int64_t numel, void* ptr) {
   }
 }
 
-void* tensorFromInt32Buffer(int64_t numel, void* ptr) {
+void* fl_tensorFromInt32Buffer(int64_t numel, void* ptr) {
   try {
     LOCK_GUARD
     auto* t = new fl::Tensor(fl::Tensor::fromBuffer({numel}, (int32_t*)ptr,
@@ -305,7 +305,7 @@ void* tensorFromInt32Buffer(int64_t numel, void* ptr) {
   }
 }
 
-void* tensorFromInt64Buffer(int64_t numel, void* ptr) {
+void* fl_tensorFromInt64Buffer(int64_t numel, void* ptr) {
   try {
     LOCK_GUARD
     auto* t = new fl::Tensor(fl::Tensor::fromBuffer({numel}, (int64_t*)ptr,
@@ -319,7 +319,7 @@ void* tensorFromInt64Buffer(int64_t numel, void* ptr) {
   }
 }
 
-void* tensorFromUint8Buffer(int64_t numel, void* ptr) {
+void* fl_tensorFromUint8Buffer(int64_t numel, void* ptr) {
   try {
     LOCK_GUARD
     auto* t = new fl::Tensor(fl::Tensor::fromBuffer({numel}, (uint8_t*)ptr,
@@ -333,7 +333,7 @@ void* tensorFromUint8Buffer(int64_t numel, void* ptr) {
   }
 }
 
-void* tensorFromUint16Buffer(int64_t numel, void* ptr) {
+void* fl_tensorFromUint16Buffer(int64_t numel, void* ptr) {
   try {
     LOCK_GUARD
     auto* t = new fl::Tensor(fl::Tensor::fromBuffer({numel}, (uint16_t*)ptr,
@@ -347,7 +347,7 @@ void* tensorFromUint16Buffer(int64_t numel, void* ptr) {
   }
 }
 
-void* tensorFromUint32Buffer(int64_t numel, void* ptr) {
+void* fl_tensorFromUint32Buffer(int64_t numel, void* ptr) {
   try {
     LOCK_GUARD
     auto* t = new fl::Tensor(fl::Tensor::fromBuffer({numel}, (uint32_t*)ptr,
@@ -361,7 +361,7 @@ void* tensorFromUint32Buffer(int64_t numel, void* ptr) {
   }
 }
 
-void* tensorFromUint64Buffer(int64_t numel, void* ptr) {
+void* fl_tensorFromUint64Buffer(int64_t numel, void* ptr) {
   try {
     LOCK_GUARD
     auto* t = new fl::Tensor(fl::Tensor::fromBuffer({numel}, (uint64_t*)ptr,
@@ -375,7 +375,7 @@ void* tensorFromUint64Buffer(int64_t numel, void* ptr) {
   }
 }
 
-void destroyTensor(void* t, void* /*ignore*/) {
+void fl_destroyTensor(void* t, void* /*ignore*/) {
   LOCK_GUARD
   auto* tensor = reinterpret_cast<fl::Tensor*>(t);
   if (tensor->hasAdapter()) {
@@ -384,7 +384,7 @@ void destroyTensor(void* t, void* /*ignore*/) {
   delete tensor;
 }
 
-void dispose(void* t) {
+void fl_dispose(void* t) {
   LOCK_GUARD
   auto& tensor = *reinterpret_cast<fl::Tensor*>(t);
   g_bytes_used -= tensor.bytes();
@@ -394,27 +394,27 @@ void dispose(void* t) {
 typedef void (*JSTypedArrayBytesDeallocator)(void* bytes,
                                              void* deallocatorContext);
 
-JSTypedArrayBytesDeallocator genTensorDestroyer() {
-  return destroyTensor;
+JSTypedArrayBytesDeallocator fl_genTensorDestroyer() {
+  return fl_destroyTensor;
 }
 
-void setRowMajor() {
+void fl_setRowMajor() {
   g_row_major = true;
 }
 
-void setColMajor() {
+void fl_setColMajor() {
   g_row_major = false;
 }
 
-bool isRowMajor() {
+bool fl_isRowMajor() {
   return g_row_major;
 }
 
-bool isColMajor() {
+bool fl_isColMajor() {
   return !g_row_major;
 }
 
-void _save(void* t, void* cstr_ptr, int length) {
+void fl_save(void* t, void* cstr_ptr, int length) {
   LOCK_GUARD
   auto* tensor = reinterpret_cast<fl::Tensor*>(t);
   const char* cstr = reinterpret_cast<char*>(cstr_ptr);
@@ -422,7 +422,7 @@ void _save(void* t, void* cstr_ptr, int length) {
   fl::save(filename, *tensor);
 }
 
-void* load(void* cstr_ptr, int length) {
+void* fl_load(void* cstr_ptr, int length) {
   try {
     LOCK_GUARD
     const char* cstr = reinterpret_cast<char*>(cstr_ptr);
@@ -439,25 +439,25 @@ void* load(void* cstr_ptr, int length) {
   }
 }
 
-void _eval(void* t) {
+void fl_eval(void* t) {
   LOCK_GUARD
   auto* tensor = reinterpret_cast<fl::Tensor*>(t);
   fl::eval(*tensor);
 }
 
-size_t _elements(void* t) {
+size_t fl_elements(void* t) {
   LOCK_GUARD
   auto* tensor = reinterpret_cast<fl::Tensor*>(t);
   return tensor->elements();
 }
 
-size_t _bytes(void* t) {
+size_t fl_bytes(void* t) {
   LOCK_GUARD
   auto* tensor = reinterpret_cast<fl::Tensor*>(t);
   return tensor->bytes();
 }
 
-int _shape(void* t, void* out, int out_len) {
+int fl_shape(void* t, void* out, int out_len) {
   LOCK_GUARD
   auto* tensor = reinterpret_cast<fl::Tensor*>(t);
   if (out_len != tensor->ndim()) {
@@ -470,13 +470,13 @@ int _shape(void* t, void* out, int out_len) {
   return 0;
 }
 
-int _ndim(void* t) {
+int fl_ndim(void* t) {
   LOCK_GUARD
   auto* tensor = reinterpret_cast<fl::Tensor*>(t);
   return tensor->ndim();
 }
 
-void* _astype(void* t, int type) {
+void* fl_astype(void* t, int type) {
   try {
     LOCK_GUARD
     auto dtype = static_cast<fl::dtype>(type);
@@ -491,67 +491,67 @@ void* _astype(void* t, int type) {
   }
 }
 
-int _dtype(void* t) {
+int fl_dtype(void* t) {
   auto* tensor = reinterpret_cast<fl::Tensor*>(t);
   auto dtype = static_cast<int>(tensor->type());
   return dtype;
 }
 
-int dtypeFloat16() {
+int fl_dtypeFloat16() {
   int dtype = static_cast<int>(fl::dtype::f16);
   return dtype;
 }
 
-int dtypeFloat32() {
+int fl_dtypeFloat32() {
   int dtype = static_cast<int>(fl::dtype::f32);
   return dtype;
 }
-int dtypeFloat64() {
+int fl_dtypeFloat64() {
   int dtype = static_cast<int>(fl::dtype::f64);
   return dtype;
 }
 
-int dtypeBoolInt8() {
+int fl_dtypeBoolInt8() {
   int dtype = static_cast<int>(fl::dtype::b8);
   return dtype;
 }
 
-int dtypeInt16() {
+int fl_dtypeInt16() {
   int dtype = static_cast<int>(fl::dtype::s16);
   return dtype;
 }
 
-int dtypeInt32() {
+int fl_dtypeInt32() {
   int dtype = static_cast<int>(fl::dtype::s32);
   return dtype;
 }
 
-int dtypeInt64() {
+int fl_dtypeInt64() {
   int dtype = static_cast<int>(fl::dtype::s64);
   return dtype;
 }
 
-int dtypeUint8() {
+int fl_dtypeUint8() {
   int dtype = static_cast<int>(fl::dtype::u8);
   return dtype;
 }
 
-int dtypeUint16() {
+int fl_dtypeUint16() {
   int dtype = static_cast<int>(fl::dtype::u16);
   return dtype;
 }
 
-int dtypeUint32() {
+int fl_dtypeUint32() {
   int dtype = static_cast<int>(fl::dtype::u32);
   return dtype;
 }
 
-int dtypeUint64() {
+int fl_dtypeUint64() {
   int dtype = static_cast<int>(fl::dtype::u64);
   return dtype;
 }
 
-float* _float16Buffer(void* t) {
+float* fl_float16Buffer(void* t) {
   try {
     LOCK_GUARD
     auto* tensor = reinterpret_cast<fl::Tensor*>(t);
@@ -563,7 +563,7 @@ float* _float16Buffer(void* t) {
   }
 }
 
-float* _float32Buffer(void* t) {
+float* fl_float32Buffer(void* t) {
   try {
     LOCK_GUARD
     auto* tensor = reinterpret_cast<fl::Tensor*>(t);
@@ -575,7 +575,7 @@ float* _float32Buffer(void* t) {
   }
 }
 
-float* _float64Buffer(void* t) {
+float* fl_float64Buffer(void* t) {
   try {
     LOCK_GUARD
     auto* tensor = reinterpret_cast<fl::Tensor*>(t);
@@ -587,7 +587,7 @@ float* _float64Buffer(void* t) {
   }
 }
 
-int* _boolInt8Buffer(void* t) {
+int* fl_boolInt8Buffer(void* t) {
   try {
     LOCK_GUARD
     auto* tensor = reinterpret_cast<fl::Tensor*>(t);
@@ -599,7 +599,7 @@ int* _boolInt8Buffer(void* t) {
   }
 }
 
-int* _int16Buffer(void* t) {
+int* fl_int16Buffer(void* t) {
   try {
     LOCK_GUARD
     auto* tensor = reinterpret_cast<fl::Tensor*>(t);
@@ -611,7 +611,7 @@ int* _int16Buffer(void* t) {
   }
 }
 
-int* _int32Buffer(void* t) {
+int* fl_int32Buffer(void* t) {
   try {
     LOCK_GUARD
     auto* tensor = reinterpret_cast<fl::Tensor*>(t);
@@ -623,7 +623,7 @@ int* _int32Buffer(void* t) {
   }
 }
 
-int* _int64Buffer(void* t) {
+int* fl_int64Buffer(void* t) {
   try {
     LOCK_GUARD
     auto* tensor = reinterpret_cast<fl::Tensor*>(t);
@@ -635,7 +635,7 @@ int* _int64Buffer(void* t) {
   }
 }
 
-unsigned* _uint8Buffer(void* t) {
+unsigned* fl_uint8Buffer(void* t) {
   try {
     LOCK_GUARD
     auto* tensor = reinterpret_cast<fl::Tensor*>(t);
@@ -647,7 +647,7 @@ unsigned* _uint8Buffer(void* t) {
   }
 }
 
-unsigned* _uint16Buffer(void* t) {
+unsigned* fl_uint16Buffer(void* t) {
   try {
     LOCK_GUARD
     auto* tensor = reinterpret_cast<fl::Tensor*>(t);
@@ -659,7 +659,7 @@ unsigned* _uint16Buffer(void* t) {
   }
 }
 
-unsigned* _uint32Buffer(void* t) {
+unsigned* fl_uint32Buffer(void* t) {
   try {
     LOCK_GUARD
     auto* tensor = reinterpret_cast<fl::Tensor*>(t);
@@ -671,7 +671,7 @@ unsigned* _uint32Buffer(void* t) {
   }
 }
 
-unsigned* _uint64Buffer(void* t) {
+unsigned* fl_uint64Buffer(void* t) {
   try {
     LOCK_GUARD
     auto* tensor = reinterpret_cast<fl::Tensor*>(t);
@@ -683,73 +683,73 @@ unsigned* _uint64Buffer(void* t) {
   }
 }
 
-float _float16Scalar(void* t) {
+float fl_float16Scalar(void* t) {
   LOCK_GUARD
   auto* tensor = reinterpret_cast<fl::Tensor*>(t);
   return tensor->asScalar<float>();
 }
 
-float _float32Scalar(void* t) {
+float fl_float32Scalar(void* t) {
   LOCK_GUARD
   auto* tensor = reinterpret_cast<fl::Tensor*>(t);
   return tensor->asScalar<float>();
 }
 
-float _float64Scalar(void* t) {
+float fl_float64Scalar(void* t) {
   LOCK_GUARD
   auto* tensor = reinterpret_cast<fl::Tensor*>(t);
   return tensor->asScalar<float>();
 }
 
-char _boolInt8Scalar(void* t) {
+char fl_boolInt8Scalar(void* t) {
   LOCK_GUARD
   auto* tensor = reinterpret_cast<fl::Tensor*>(t);
   return tensor->asScalar<char>();
 }
 
-int16_t _int16Scalar(void* t) {
+int16_t fl_int16Scalar(void* t) {
   LOCK_GUARD
   auto* tensor = reinterpret_cast<fl::Tensor*>(t);
   return tensor->asScalar<int16_t>();
 }
 
-int32_t _int32Scalar(void* t) {
+int32_t fl_int32Scalar(void* t) {
   LOCK_GUARD
   auto* tensor = reinterpret_cast<fl::Tensor*>(t);
   return tensor->asScalar<int32_t>();
 }
 
-int64_t _int64Scalar(void* t) {
+int64_t fl_int64Scalar(void* t) {
   LOCK_GUARD
   auto* tensor = reinterpret_cast<fl::Tensor*>(t);
   return tensor->asScalar<int64_t>();
 }
 
-uint8_t _uint8Scalar(void* t) {
+uint8_t fl_uint8Scalar(void* t) {
   LOCK_GUARD
   auto* tensor = reinterpret_cast<fl::Tensor*>(t);
   return tensor->asScalar<uint8_t>();
 }
 
-uint16_t _uint16Scalar(void* t) {
+uint16_t fl_uint16Scalar(void* t) {
   LOCK_GUARD
   auto* tensor = reinterpret_cast<fl::Tensor*>(t);
   return tensor->asScalar<uint16_t>();
 }
 
-uint32_t _uint32Scalar(void* t) {
+uint32_t fl_uint32Scalar(void* t) {
   LOCK_GUARD
   auto* tensor = reinterpret_cast<fl::Tensor*>(t);
   return tensor->asScalar<uint32_t>();
 }
 
-uint64_t _uint64Scalar(void* t) {
+uint64_t fl_uint64Scalar(void* t) {
   LOCK_GUARD
   auto* tensor = reinterpret_cast<fl::Tensor*>(t);
   return tensor->asScalar<uint64_t>();
 }
 
-void* _index(void* t, void* args_ptr, int64_t args_len) {
+void* fl_index(void* t, void* args_ptr, int64_t args_len) {
   try {
     LOCK_GUARD
     auto args = arrayArg<int64_t>(args_ptr, args_len, false, false);
@@ -803,7 +803,7 @@ void* _index(void* t, void* args_ptr, int64_t args_len) {
   }
 }
 
-void* _indexedAssign(void* t, void* other, void* args_ptr, int64_t args_len) {
+void* fl_indexedAssign(void* t, void* other, void* args_ptr, int64_t args_len) {
   try {
     LOCK_GUARD
     auto args = arrayArg<int64_t>(args_ptr, args_len, false, false);
@@ -852,7 +852,7 @@ void* _indexedAssign(void* t, void* other, void* args_ptr, int64_t args_len) {
   }
 }
 
-void* _flatten(void* t) {
+void* fl_flatten(void* t) {
   try {
     LOCK_GUARD
     auto* tensor = reinterpret_cast<fl::Tensor*>(t);
@@ -866,7 +866,7 @@ void* _flatten(void* t) {
   }
 }
 
-void* _asContiguousTensor(void* t) {
+void* fl_asContiguousTensor(void* t) {
   try {
     LOCK_GUARD
     auto* tensor = reinterpret_cast<fl::Tensor*>(t);
@@ -880,7 +880,7 @@ void* _asContiguousTensor(void* t) {
   }
 }
 
-void* _copy(void* t) {
+void* fl_copy(void* t) {
   try {
     LOCK_GUARD
     auto* tensor = reinterpret_cast<fl::Tensor*>(t);
@@ -894,7 +894,7 @@ void* _copy(void* t) {
   }
 }
 
-void* _pad(void* t,
+void* fl_pad(void* t,
            void* before,
            int64_t before_len,
            void* after,
@@ -920,7 +920,7 @@ void* _pad(void* t,
 }
 
 // `grad_in` is Shumai equivalent to Flashlight `gradOutput`
-void* _conv2dBackwardData(void* grad_in, void* in, void* wt, int* params) {
+void* fl_conv2dBackwardData(void* grad_in, void* in, void* wt, int* params) {
   try {
     LOCK_GUARD
     int sx = params[0];
@@ -951,7 +951,7 @@ void* _conv2dBackwardData(void* grad_in, void* in, void* wt, int* params) {
 }
 
 // `grad_in` is Shumai equivalent to Flashlight `gradOutput`
-void* _conv2dBackwardFilter(void* grad_in, void* in, void* wt, int* params) {
+void* fl_conv2dBackwardFilter(void* grad_in, void* in, void* wt, int* params) {
   try {
     LOCK_GUARD
     int sx = params[0];

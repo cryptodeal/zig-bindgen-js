@@ -13,10 +13,15 @@ add_library(
   cpp/flashlight_binding.cc
   )
 
+# Write lib to the project root
+set_target_properties(
+  flashlight_binding
+  PROPERTIES
+  LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}
+)
+
 target_link_libraries(
   flashlight_binding
   PRIVATE
   flashlight::flashlight
 )
-
-install(TARGETS flashlight_binding)
