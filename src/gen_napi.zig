@@ -128,8 +128,12 @@ pub const JSCtx = struct {
             .Pointer => |info| switch (info.size) {
                 .One => self.wrap_object(v),
                 .C => {
-                    // TODO: return as `TypedArray` if JS equivalent exists
-                    return try self.wrap_object(v);
+                    // if JS `TypedArray` equivalent exists, handle as such
+                    const data_type = info.child;
+                    return switch (data_type) {
+                        f32, f64, i8, i16, i32, i64, u8, u16, u32, u64 => self.create_typedarray(data_type, v),
+                        else => self.wrap_object(v),
+                    };
                 },
                 .Slice => self.create_array_from(v),
                 else => @compileError("writing " ++ @tagName(@typeInfo(T)) ++ " " ++ @typeName(T) ++ " is not supported"),

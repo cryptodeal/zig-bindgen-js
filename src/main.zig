@@ -47,11 +47,6 @@ pub fn custom_arg_parser(js: *napigen.JSCtx, comptime T: type, v: napigen.napi_v
 }
 
 pub fn custom_return_handler(js: *napigen.JSCtx, v: anytype, comptime name: []const u8) !napigen.napi_value {
-    if (comptime std.mem.eql(u8, name, "fl_float32Buffer")) {
-        const T = @TypeOf(v);
-        const child_type = @typeInfo(T).Pointer.child;
-        return js.create_typedarray(child_type, v);
-    }
 
     // std.debug.print("fn name: {s}\n", .{name});
     if (comptime std.mem.eql(u8, name, "fl_tensorFromFloat32Buffer") or std.mem.eql(u8, name, "fl_asContiguousTensor")) {
