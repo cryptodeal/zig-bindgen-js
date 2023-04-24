@@ -67,6 +67,10 @@ pub const JSCtx = struct {
     env: napi.napi_env,
     refs: std.AutoHashMapUnmanaged(usize, napi.napi_ref) = .{},
     mem: TransientAllocator,
+    // hacky helper for hooks; can parse arg that provides len
+    // or call function to get length and cache value here
+    c_ptr_len: usize = 0,
+    c_ptr_bytes: usize = 0,
 
     // TODO: pass fn name to `parse` and `write` hooks
 
@@ -85,7 +89,7 @@ pub const JSCtx = struct {
             .Int, .ComptimeInt, .Float, .ComptimeFloat => self.get_number(T, v),
             .Enum => std.meta.intToEnum(T, self.get_number(u32, v)),
             .Struct => if (trait.isTuple(T)) self.get_tuple(T, v) else self.get_object(T, v),
-            .Optional => |info| if (try self.type_of(v) == napi.napi_null) null else self.read(info.child, v),
+            .Optional => |info| if (try self.type_of(v) == napi.napi_null) null else self.parse(info.child, v, ""),
             // TODO: better handling of pointers (not always going to leverage `wrap_object`)
             .Pointer => |info| switch (info.size) {
                 // handle by wrapping as user must define finalizer for `Napi::External` via hooks
@@ -119,7 +123,7 @@ pub const JSCtx = struct {
             .Int, .ComptimeInt, .Float, .ComptimeFloat => self.create_number(v),
             .Enum => self.create_number(@as(u32, @enumToInt(v))),
             .Struct => if (trait.isTuple(T)) self.create_tuple(v) else self.create_object_from(v),
-            .Optional => if (v) |val| self.write(val) else self.null(),
+            .Optional => if (v) |val| self.write(val, "") else self.null(),
             // TODO: better handling of pointers (not always going to leverage `wrap_object`)
             .Pointer => |info| switch (info.size) {
                 .One => self.wrap_object(v),
@@ -503,13 +507,13 @@ pub const JSCtx = struct {
         return res;
     }
     // TODO: get `ArrayBuffer`
-
-    pub fn create_arraybuffer(self: *JSCtx, v: []const u8) Error!napi.napi_value {
+    pub fn create_arraybuffer(self: *JSCtx, comptime T: type, v: ?*anyopaque) Error!napi.napi_value {
+        const bytes = comptime @sizeOf(T);
         var data: ?*anyopaque = undefined;
         var res: napi.napi_value = undefined;
         // TODO: avoid the copy?
-        try err_check(napi.napi_create_arraybuffer(self.env, v.len, &data, &res));
-        std.mem.copy(u8, @ptrCast([*]u8, data.?)[0..v.len], v[0..v.len]);
+        try err_check(napi.napi_create_arraybuffer(self.env, self.c_ptr_len * bytes, &data, &res));
+        std.mem.copy(T, @ptrCast([*]T, @alignCast(@alignOf([*]T), data.?))[0..self.c_ptr_len], @ptrCast([*]T, @alignCast(@alignOf([*]T), v.?))[0..self.c_ptr_len]);
         return res;
     }
 
@@ -555,10 +559,33 @@ pub const JSCtx = struct {
     /// parse JS `TypedArray` to relevant C Array (e.g. `Float32Array` -> `[*c]f32`)
     pub fn get_typedarray_data(self: *JSCtx, comptime T: type, v: napi.napi_value) Error!T {
         var res: ?*anyopaque = undefined;
-        var len: usize = undefined;
-        try err_check(napi.napi_get_typedarray_info(self.env, v, null, &len, &res, null, null));
+        try err_check(napi.napi_get_typedarray_info(self.env, v, null, null, &res, null, null));
         return @ptrCast(T, @alignCast(@alignOf(T), res.?));
     }
 
+    pub fn create_typedarray(self: *JSCtx, comptime T: type, v: ?*anyopaque) Error!napi.napi_value {
+        var res: napi.napi_value = undefined;
+        const buf = try self.create_arraybuffer(T, v);
+        try err_check(napi.napi_create_typedarray(self.env, get_napi_typedarray_type(T), self.c_ptr_len, buf, 0, &res));
+        return res;
+    }
+
+    pub fn get_napi_typedarray_type(comptime T: type) napi.napi_typedarray_type {
+        return switch (T) {
+            f32 => napi.napi_float32_array,
+            f64 => napi.napi_float64_array,
+            i8 => napi.napi_int8_array,
+            i16 => napi.napi_int16_array,
+            i32 => napi.napi_int32_array,
+            i64 => napi.napi_bigint64_array,
+            u8 => napi.napi_uint8_array,
+            u16 => napi.napi_uint16_array,
+            u32 => napi.napi_uint32_array,
+            u64 => napi.napi_biguint64_array,
+            else => @compileError("unsupported type"),
+        };
+    }
+
     // TODO: create `TypedArray`
+    // pub fn create_typedarray(self: *JSCtx, v: ?*anyopaque)
 };

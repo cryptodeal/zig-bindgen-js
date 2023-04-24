@@ -32,16 +32,29 @@ fn finalize_tensor(env: napigen.napi_env, finalize_data: ?*anyopaque, finalize_h
 }
 
 pub fn custom_arg_parser(js: *napigen.JSCtx, comptime T: type, v: napigen.napi_value, comptime name: []const u8) !T {
-    if ((comptime std.mem.eql(u8, name, "fl_dtype") or std.mem.eql(u8, name, "fl_dispose")) and T == ?*anyopaque) {
+    if (comptime std.mem.eql(u8, name, "fl_float32Buffer") and T == ?*anyopaque) {
+        const ptr = try js.get_external(T, v);
+        js.c_ptr_len = fl.fl_elements(ptr);
+        return ptr;
+    }
+
+    if ((comptime std.mem.eql(u8, name, "fl_dtype") or std.mem.eql(u8, name, "fl_dispose") or std.mem.eql(u8, name, "fl_asContiguousTensor") or std.mem.eql(u8, name, "fl_elements")) and T == ?*anyopaque) {
         // std.debug.print("{any}\n", .{T});
         return js.get_external(T, v);
     }
+
     return js.arg_parser(T, v, name);
 }
 
 pub fn custom_return_handler(js: *napigen.JSCtx, v: anytype, comptime name: []const u8) !napigen.napi_value {
+    if (comptime std.mem.eql(u8, name, "fl_float32Buffer")) {
+        const T = @TypeOf(v);
+        const child_type = @typeInfo(T).Pointer.child;
+        return js.create_typedarray(child_type, v);
+    }
+
     // std.debug.print("fn name: {s}\n", .{name});
-    if (comptime std.mem.eql(u8, name, "fl_tensorFromFloat32Buffer")) {
+    if (comptime std.mem.eql(u8, name, "fl_tensorFromFloat32Buffer") or std.mem.eql(u8, name, "fl_asContiguousTensor")) {
         return js.create_external(@ptrCast(*anyopaque, @constCast(v)), finalize_tensor, null);
     }
     return js.return_handler(v, name);
