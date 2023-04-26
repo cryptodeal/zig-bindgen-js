@@ -12,4 +12,4 @@ void fl_dispose(void* t);
 size_t fl_elements(void *t);
 void *fl_asContiguousTensor(void *t);
 void *fl_tensorFromFloat32Buffer(int64_t numel, float *ptr);
-float *fl_float32Buffer(void *t);
+float *fl_float32Buffer(void *t, size_t *len);

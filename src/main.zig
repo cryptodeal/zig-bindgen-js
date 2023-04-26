@@ -18,7 +18,7 @@ fn initModule(js: *napigen.JSCtx, exports: napigen.napi_value) !napigen.napi_val
             const T = @TypeOf(@field(fl, d.name));
 
             if (@typeInfo(T) == .Fn) {
-                try js.set_named_property(exports, "" ++ d.name, try js.create_function(@field(fl, d.name), d.name));
+                try js.set_named_property(exports, "" ++ d.name, try js.create_named_function(d.name, @field(fl, d.name)));
             }
         }
     }
@@ -32,13 +32,7 @@ fn finalize_tensor(env: napigen.napi_env, finalize_data: ?*anyopaque, finalize_h
 }
 
 pub fn custom_arg_parser(js: *napigen.JSCtx, comptime T: type, v: napigen.napi_value, comptime name: []const u8) !T {
-    if (comptime std.mem.eql(u8, name, "fl_float32Buffer") and T == ?*anyopaque) {
-        const ptr = try js.get_external(T, v);
-        js.c_ptr_len = fl.fl_elements(ptr);
-        return ptr;
-    }
-
-    if ((comptime std.mem.eql(u8, name, "fl_dtype") or std.mem.eql(u8, name, "fl_dispose") or std.mem.eql(u8, name, "fl_asContiguousTensor") or std.mem.eql(u8, name, "fl_elements")) and T == ?*anyopaque) {
+    if ((comptime std.mem.eql(u8, name, "fl_dtype") or std.mem.eql(u8, name, "fl_dispose") or std.mem.eql(u8, name, "fl_asContiguousTensor") or std.mem.eql(u8, name, "fl_elements") or std.mem.eql(u8, name, "fl_float32Buffer")) and T == ?*anyopaque) {
         // std.debug.print("{any}\n", .{T});
         return js.get_external(T, v);
     }
@@ -46,11 +40,11 @@ pub fn custom_arg_parser(js: *napigen.JSCtx, comptime T: type, v: napigen.napi_v
     return js.arg_parser(T, v, name);
 }
 
-pub fn custom_return_handler(js: *napigen.JSCtx, v: anytype, comptime name: []const u8) !napigen.napi_value {
+pub fn custom_return_handler(js: *napigen.JSCtx, v: anytype, comptime name: []const u8, c_array_len: [*c]usize) !napigen.napi_value {
 
     // std.debug.print("fn name: {s}\n", .{name});
     if (comptime std.mem.eql(u8, name, "fl_tensorFromFloat32Buffer") or std.mem.eql(u8, name, "fl_asContiguousTensor")) {
         return js.create_external(@ptrCast(*anyopaque, @constCast(v)), finalize_tensor, null);
     }
-    return js.return_handler(v, name);
+    return js.return_handler(v, name, c_array_len);
 }

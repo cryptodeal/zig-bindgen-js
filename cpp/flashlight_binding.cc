@@ -563,10 +563,13 @@ float* fl_float16Buffer(void* t) {
   }
 }
 
-float* fl_float32Buffer(void* t) {
+float* fl_float32Buffer(void* t, size_t* len) {
   try {
     LOCK_GUARD
     auto* tensor = reinterpret_cast<fl::Tensor*>(t);
+    if (len != NULL) {
+      *len = reinterpret_cast<size_t>(tensor->elements());
+    }
     return tensor->astype(fl::dtype::f32).host<float>();
   } catch (std::exception const& e) {
     HANDLE_EXCEPTION(e.what());

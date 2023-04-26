@@ -6,4 +6,5 @@ console.log(addon.fl_bytesUsed());
 const contig = addon.fl_asContiguousTensor(tensor);
 console.log(addon.fl_float32Buffer(contig));
 addon.fl_dispose(tensor);
+addon.fl_dispose(contig);
 console.log(addon.fl_bytesUsed());

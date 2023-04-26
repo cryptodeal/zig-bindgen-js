@@ -67,12 +67,6 @@ pub const JSCtx = struct {
     env: napi.napi_env,
     refs: std.AutoHashMapUnmanaged(usize, napi.napi_ref) = .{},
     mem: TransientAllocator,
-    // hacky helper for hooks; can parse arg that provides len
-    // or call function to get length and cache value here
-    c_ptr_len: usize = 0,
-    c_ptr_bytes: usize = 0,
-
-    // TODO: pass fn name to `parse` and `write` hooks
 
     // parse hook (handles conversion: JS -> Native)
     pub const parse = if (@hasDecl(root, "custom_arg_parser")) root.custom_arg_parser else arg_parser;
@@ -112,7 +106,7 @@ pub const JSCtx = struct {
 
     // write hook (handles conversion: Native -> JS)
     pub const write = if (@hasDecl(root, "custom_return_handler")) root.custom_return_handler else return_handler;
-    pub fn return_handler(self: *JSCtx, v: anytype, _: []const u8) Error!napi.napi_value {
+    pub fn return_handler(self: *JSCtx, v: anytype, _: []const u8, c_array_len: [*c]usize) Error!napi.napi_value {
         const T = @TypeOf(v);
         if (T == napi.napi_value) return v;
         if (comptime trait.isZigString(T)) return self.create_string(v);
@@ -131,7 +125,7 @@ pub const JSCtx = struct {
                     // if JS `TypedArray` equivalent exists, handle as such
                     const data_type = info.child;
                     return switch (data_type) {
-                        f32, f64, i8, i16, i32, i64, u8, u16, u32, u64 => self.create_typedarray(data_type, v),
+                        f32, f64, i8, i16, i32, i64, u8, u16, u32, u64 => self.create_typedarray(data_type, v, c_array_len),
                         else => self.wrap_object(v),
                     };
                 },
@@ -296,9 +290,9 @@ pub const JSCtx = struct {
 
     /// transform native array/slice to JS `Array` (if no compatible `TypedArray` exists)
     pub fn create_array_from(self: *JSCtx, v: anytype) Error!napi.napi_value {
-        const res = try self.create_array_with_length(v.len);
+        const res = try self.create_array_with_length(@truncate(u32, v.len));
         for (v, 0..) |val, i| {
-            try self.set_element(res, i, try self.write(val));
+            try self.set_element(res, @truncate(u32, i), try self.write(val));
         }
         return res;
     }
@@ -307,6 +301,16 @@ pub const JSCtx = struct {
     pub fn get_array_length(self: *JSCtx, v: napi.napi_value) Error!u32 {
         var res: u32 = undefined;
         try err_check(napi.napi_get_array_length(self.env, v, &res));
+        return res;
+    }
+
+    /// parse JS Array to native slice.
+    pub fn get_array(self: *JSCtx, comptime T: type, arr: napi.napi_value) Error![]T {
+        var len: u32 = try self.get_array_length(arr);
+        var res = try self.mem.allocator().alloc(T, len);
+        for (res, 0..) |*v, i| {
+            v.* = try self.read(T, try self.get_element(arr, i));
+        }
         return res;
     }
 
@@ -320,19 +324,6 @@ pub const JSCtx = struct {
     /// set value in JS `Array` at index `i`
     pub fn set_element(self: *JSCtx, array: napi.napi_value, i: u32, v: napi.napi_value) Error!void {
         try err_check(napi.napi_set_element(self.env, array, i, v));
-    }
-
-    /// parse JS `Array<T>` to `[]T`
-    pub fn get_array(self: *JSCtx, comptime T: type, v: napi.napi_value) Error!T {
-        var res: T = undefined;
-        const len = self.get_array_length(v);
-        const field_type = @typeInfo(T).Pointer.child;
-        comptime var i = 0;
-        inline while (i < len) : (i += 1) {
-            var tmp_val = try self.get_element(v, @truncate(u32, i));
-            res[i] = try self.parse(field_type, tmp_val);
-        }
-        return res;
     }
 
     /// transform `tuple` to JS `[T1, T2... etc]`
@@ -432,9 +423,14 @@ pub const JSCtx = struct {
             _ = ctx.refs.remove(ptr_int);
         }
     }
+    /// Create a JS function.
+    pub fn create_function(self: *JSCtx, comptime func: anytype) Error!napi.napi_value {
+        return self.create_named_function("anonymous", func);
+    }
 
     /// creates JS function
-    pub fn create_function(self: *JSCtx, comptime func: anytype, comptime name: []const u8) Error!napi.napi_value {
+    pub fn create_named_function(self: *JSCtx, comptime name: []const u8, comptime func: anytype) Error!napi.napi_value {
+        // TODO: add hook (scoped to fn call?) here to capture length of returned C array
         const F = @TypeOf(func);
         const Args = std.meta.ArgsTuple(F);
         const Res = @typeInfo(F).Fn.return_type.?;
@@ -442,6 +438,7 @@ pub const JSCtx = struct {
         // TODO: need to pass fn name as arg to `call` fn
         const FnUtils = struct {
             pub const fn_name = name;
+            var c_array_len: usize = 0;
 
             fn call(env: napi.napi_env, cb: napi.napi_callback_info) callconv(.C) napi.napi_value {
                 var ctx = JSCtx.get_instance(env);
@@ -450,10 +447,11 @@ pub const JSCtx = struct {
                 defer ctx.mem.dec();
                 const args = read_args(ctx, cb) catch |err| return ctx.create_error(err);
                 const res = @call(.auto, func, args);
+
                 if (comptime trait.is(.ErrorUnion)(Res)) {
-                    return if (res) |r| ctx.write(r, fn_name) catch |err| ctx.create_error(err) else |err| ctx.create_error(err);
+                    return if (res) |r| ctx.write(r, fn_name, &c_array_len) catch |err| ctx.create_error(err) else |err| ctx.create_error(err);
                 } else {
-                    return ctx.write(res, fn_name) catch |err| ctx.create_error(err);
+                    return ctx.write(res, fn_name, &c_array_len) catch |err| ctx.create_error(err);
                 }
             }
 
@@ -468,10 +466,16 @@ pub const JSCtx = struct {
                         @field(args, field.name) = ctx;
                         continue;
                     }
-                    @field(args, field.name) = try ctx.parse(field.type, arg_values[i], fn_name);
+                    // hacky solution to snag length of C array ptr returned from fn
+                    if (field.type == [*c]usize) {
+                        @field(args, field.name) = &c_array_len;
+                    } else {
+                        @field(args, field.name) = try ctx.parse(field.type, arg_values[i], fn_name);
+                    }
                     i += 1;
                 }
-                if (i != arg_count) {
+
+                if (i < arg_count) {
                     std.debug.print("expected {d} args\n", .{arg_count});
                     return error.InvalidArgumentCount;
                 }
@@ -511,13 +515,13 @@ pub const JSCtx = struct {
         return res;
     }
     // TODO: get `ArrayBuffer`
-    pub fn create_arraybuffer(self: *JSCtx, comptime T: type, v: ?*anyopaque) Error!napi.napi_value {
+    pub fn create_arraybuffer(self: *JSCtx, comptime T: type, v: ?*anyopaque, c_array_len: [*c]usize) Error!napi.napi_value {
         const bytes = comptime @sizeOf(T);
         var data: ?*anyopaque = undefined;
         var res: napi.napi_value = undefined;
         // TODO: avoid the copy?
-        try err_check(napi.napi_create_arraybuffer(self.env, self.c_ptr_len * bytes, &data, &res));
-        std.mem.copy(T, @ptrCast([*]T, @alignCast(@alignOf([*]T), data.?))[0..self.c_ptr_len], @ptrCast([*]T, @alignCast(@alignOf([*]T), v.?))[0..self.c_ptr_len]);
+        try err_check(napi.napi_create_arraybuffer(self.env, c_array_len.* * bytes, &data, &res));
+        std.mem.copy(T, @ptrCast([*]T, @alignCast(@alignOf([*]T), data.?))[0..c_array_len.*], @ptrCast([*]T, @alignCast(@alignOf([*]T), v.?))[0..c_array_len.*]);
         return res;
     }
 
@@ -567,10 +571,10 @@ pub const JSCtx = struct {
         return @ptrCast(T, @alignCast(@alignOf(T), res.?));
     }
 
-    pub fn create_typedarray(self: *JSCtx, comptime T: type, v: ?*anyopaque) Error!napi.napi_value {
+    pub fn create_typedarray(self: *JSCtx, comptime T: type, v: ?*anyopaque, c_ptr_len: [*c]usize) Error!napi.napi_value {
         var res: napi.napi_value = undefined;
-        const buf = try self.create_arraybuffer(T, v);
-        try err_check(napi.napi_create_typedarray(self.env, get_napi_typedarray_type(T), self.c_ptr_len, buf, 0, &res));
+        const buf = try self.create_arraybuffer(T, v, c_ptr_len);
+        try err_check(napi.napi_create_typedarray(self.env, get_napi_typedarray_type(T), c_ptr_len.*, buf, 0, &res));
         return res;
     }
 
