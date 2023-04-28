@@ -18,6 +18,10 @@ fn testSliceOut() ![]i32 {
     return slice;
 }
 
+fn testSliceIn(slice: []i32) void {
+    std.debug.print("slice: {any}\n", .{slice});
+}
+
 fn initModule(js: *napigen.JSCtx, exports: napigen.napi_value) !napigen.napi_value {
     @setEvalBranchQuota(100_000);
     inline for (comptime std.meta.declarations(fl)) |d| {
@@ -31,6 +35,7 @@ fn initModule(js: *napigen.JSCtx, exports: napigen.napi_value) !napigen.napi_val
                 try js.set_named_property(exports, "" ++ d.name, try js.create_named_function(d.name, @field(fl, d.name)));
             }
             try js.set_named_property(exports, "" ++ "testSliceOut", try js.create_named_function("testSliceOut", testSliceOut));
+            try js.set_named_property(exports, "" ++ "testSliceIn", try js.create_named_function("testSliceIn", testSliceIn));
         }
     }
 

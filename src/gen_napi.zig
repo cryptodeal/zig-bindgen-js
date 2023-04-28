@@ -92,16 +92,18 @@ pub const JSCtx = struct {
                     // if JS `TypedArray` equivalent exists, handle as such
                     const data_type = info.child;
                     return switch (data_type) {
-                        f32, f64, i8, i16, i32, i64, u8, u16, u32, u64 => self.get_typedarray_data(T, v),
-                        else => self.unwrap_object(info.child, v),
+                        f32, f64, i8, i16, i32, i64, u8, u16, u32, u64 => self.get_typedarray_data(data_type, v),
+                        else => (try self.get_array(data_type, v)).ptr,
                     };
                 },
-                // TODO: handle as `TypedArray` when possible
                 .Slice => {
                     const data_type = info.child;
                     return switch (data_type) {
-                        f32, f64, i8, i16, i32, i64, u8, u16, u32, u64 => self.get_typedarray_data(T, v),
-                        else => self.get_array(info.child, v),
+                        f32, f64, i8, i16, i32, i64, u8, u16, u32, u64 => {
+                            const len = try self.get_typedarray_length(v);
+                            return (try self.get_typedarray_data(data_type, v))[0..len];
+                        },
+                        else => self.get_array(data_type, v),
                     };
                 },
                 else => @compileError("reading " ++ @tagName(@typeInfo(T)) ++ " " ++ @typeName(T) ++ " is not supported"),
@@ -324,7 +326,7 @@ pub const JSCtx = struct {
         var len: u32 = try self.get_array_length(arr);
         var res = try self.mem.allocator().alloc(T, len);
         for (res, 0..) |*v, i| {
-            v.* = try self.read(T, try self.get_element(arr, @intCast(u32, i)));
+            v.* = try self.parse(T, try self.get_element(arr, @intCast(u32, i)), "");
         }
         return res;
     }
@@ -584,10 +586,10 @@ pub const JSCtx = struct {
     }
 
     /// parse JS `TypedArray` to relevant C Array (e.g. `Float32Array` -> `[*c]f32`)
-    pub fn get_typedarray_data(self: *JSCtx, comptime T: type, v: napi.napi_value) Error!T {
+    pub fn get_typedarray_data(self: *JSCtx, comptime T: type, v: napi.napi_value) Error![*]T {
         var res: ?*anyopaque = undefined;
         try err_check(napi.napi_get_typedarray_info(self.env, v, null, null, &res, null, null));
-        return @ptrCast(T, @alignCast(@alignOf(T), res.?));
+        return @ptrCast([*]T, @constCast(@alignCast(@alignOf([*]T), res.?)));
     }
 
     pub fn create_typedarray(self: *JSCtx, comptime T: type, v: anytype) Error!napi.napi_value {
