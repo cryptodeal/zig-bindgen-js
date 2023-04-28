@@ -4,8 +4,18 @@ const fl = @cImport({
     @cInclude("flashlight_binding.h");
 });
 
+pub const allocator = std.heap.c_allocator;
+
 comptime {
     napigen.define_module(initModule);
+}
+
+fn testSliceOut() ![]i32 {
+    var slice: []i32 = try napigen.allocator.alloc(i32, 10);
+    for (slice, 0..) |_, i| {
+        slice[i] = @intCast(i32, i);
+    }
+    return slice;
 }
 
 fn initModule(js: *napigen.JSCtx, exports: napigen.napi_value) !napigen.napi_value {
@@ -20,31 +30,37 @@ fn initModule(js: *napigen.JSCtx, exports: napigen.napi_value) !napigen.napi_val
             if (@typeInfo(T) == .Fn) {
                 try js.set_named_property(exports, "" ++ d.name, try js.create_named_function(d.name, @field(fl, d.name)));
             }
+            try js.set_named_property(exports, "" ++ "testSliceOut", try js.create_named_function("testSliceOut", testSliceOut));
         }
     }
 
     return exports;
 }
 
-fn finalize_tensor(env: napigen.napi_env, finalize_data: ?*anyopaque, finalize_hint: ?*anyopaque) callconv(.C) void {
-    _ = env;
-    return fl.fl_destroyTensor(finalize_data, finalize_hint);
-}
+const parse_external = [_][]const u8{ "fl_dtype", "fl_dispose", "fl_asContiguousTensor", "fl_elements", "fl_float32Buffer" };
 
 pub fn custom_arg_parser(js: *napigen.JSCtx, comptime T: type, v: napigen.napi_value, comptime name: []const u8) !T {
-    if ((comptime std.mem.eql(u8, name, "fl_dtype") or std.mem.eql(u8, name, "fl_dispose") or std.mem.eql(u8, name, "fl_asContiguousTensor") or std.mem.eql(u8, name, "fl_elements") or std.mem.eql(u8, name, "fl_float32Buffer")) and T == ?*anyopaque) {
-        // std.debug.print("{any}\n", .{T});
-        return js.get_external(T, v);
+    inline for (parse_external) |n| {
+        if (comptime std.mem.eql(u8, name, n) and T == ?*anyopaque) {
+            return js.get_external(T, v);
+        }
     }
 
     return js.arg_parser(T, v, name);
 }
 
-pub fn custom_return_handler(js: *napigen.JSCtx, v: anytype, comptime name: []const u8, c_array_len: [*c]usize) !napigen.napi_value {
+fn finalize_tensor(_: napigen.napi_env, finalize_data: ?*anyopaque, finalize_hint: ?*anyopaque) callconv(.C) void {
+    return fl.fl_destroyTensor(finalize_data, finalize_hint);
+}
 
-    // std.debug.print("fn name: {s}\n", .{name});
-    if (comptime std.mem.eql(u8, name, "fl_tensorFromFloat32Buffer") or std.mem.eql(u8, name, "fl_asContiguousTensor")) {
-        return js.create_external(@ptrCast(*anyopaque, @constCast(v)), finalize_tensor, null);
+const create_external = [_][]const u8{ "fl_tensorFromFloat32Buffer", "fl_asContiguousTensor" };
+
+pub fn custom_return_handler(js: *napigen.JSCtx, v: anytype, comptime name: []const u8, c_array_len: *usize) !napigen.napi_value {
+    inline for (create_external) |n| {
+        if (comptime std.mem.eql(u8, name, n)) {
+            return js.create_external(@ptrCast(*anyopaque, @constCast(v)), finalize_tensor, null);
+        }
     }
+
     return js.return_handler(v, name, c_array_len);
 }

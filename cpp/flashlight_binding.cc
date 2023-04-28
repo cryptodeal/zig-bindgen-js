@@ -563,7 +563,7 @@ float* fl_float16Buffer(void* t) {
   }
 }
 
-float* fl_float32Buffer(void* t, size_t* len) {
+float* fl_float32Buffer(void* t, size_t* len = NULL) {
   try {
     LOCK_GUARD
     auto* tensor = reinterpret_cast<fl::Tensor*>(t);
