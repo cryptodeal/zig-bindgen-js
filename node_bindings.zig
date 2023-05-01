@@ -9,8 +9,10 @@ const args = [_]gen_node.FnArgs{ .{ .name = "a" }, .{ .name = "b" } };
 const info: gen_node.FnInfo = .{ .args = @constCast(&args) };
 
 pub fn main() !void {
-    var builder = try gen_node.TSExports.init("../zig-out/example.node", "");
+    var builder = try gen_node.TSExports.init();
     defer builder.deinit();
+
+    try builder.write_frontmatter("../zig-out/lib/example.node", "");
 
     try builder.wrap_method("add", add, info);
 

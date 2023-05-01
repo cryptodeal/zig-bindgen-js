@@ -15,12 +15,13 @@ pub fn build(b: *std.Build) void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
-    // const bindings = b.addExecutable(.{
-    // .name = "node_client",
-    // .root_source_file = .{ .path = "node_bindings.zig" },
-    // .target = target,
-    // });
-    // const bindings_step = b.addRunArtifact(bindings);
+    const bindings = b.addExecutable(.{
+        .name = "node_client",
+        .root_source_file = .{ .path = "node_bindings.zig" },
+        .target = target,
+    });
+
+    const bindings_step = b.addRunArtifact(bindings);
 
     const lib = b.addSharedLibrary(.{
         .name = "zig-bindgen-js",
@@ -40,7 +41,7 @@ pub fn build(b: *std.Build) void {
     lib.addIncludePath("libs/napi-headers/include");
     lib.linkLibC();
 
-    // lib.step.dependOn(&bindings_step.step);
+    lib.step.dependOn(&bindings_step.step);
 
     // This declares intent for the library to be installed into the standard
     // location when the user invokes the "install" step (the default step when

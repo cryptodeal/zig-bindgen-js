@@ -467,7 +467,6 @@ pub const JSCtx = struct {
         // TODO: add hook (scoped to fn call?) here to capture length of returned C array
         const F = @TypeOf(func);
         const Args = std.meta.ArgsTuple(F);
-        // std.debug.print("Args: {any}\n", .{Args});
         const Res = @typeInfo(F).Fn.return_type.?;
 
         // TODO: need to pass fn name as arg to `call` fn
@@ -495,6 +494,7 @@ pub const JSCtx = struct {
                 var arg_count: usize = args.len;
                 var arg_values: [args.len]napi.napi_value = undefined;
                 try err_check(napi.napi_get_cb_info(ctx.env, cb, &arg_count, &arg_values, null, null));
+
                 const expected_arg_count = @typeInfo(Args).Struct.fields.len;
                 var i: usize = 0;
                 inline for (std.meta.fields(Args)) |field| {
