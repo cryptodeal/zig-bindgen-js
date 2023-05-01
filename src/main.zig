@@ -128,6 +128,30 @@ fn add_f64(a: f64, b: f64) f64 {
     return a + b;
 }
 
+fn round_trip_string(s: []const u8) []const u8 {
+    return s;
+}
+
+fn concat_strings(a: []const u8, b: []const u8, c: []const u8) ![]const u8 {
+    return try std.mem.join(napigen.allocator, "", &.{ a, b, c });
+}
+
+fn new_string() []const u8 {
+    return "Hello, World!";
+}
+
+fn bool_true() bool {
+    return true;
+}
+
+fn bool_false() bool {
+    return false;
+}
+
+fn negate_bool(v: bool) bool {
+    return !v;
+}
+
 fn initModule(js: *napigen.JSCtx, exports: napigen.napi_value) !napigen.napi_value {
     @setEvalBranchQuota(100_000);
     inline for (comptime std.meta.declarations(fl)) |d| {
@@ -164,6 +188,12 @@ fn initModule(js: *napigen.JSCtx, exports: napigen.napi_value) !napigen.napi_val
     try js.set_named_property(exports, "add_u64", try js.create_named_function("add_u64", add_u64));
     try js.set_named_property(exports, "add_f32", try js.create_named_function("add_f32", add_f32));
     try js.set_named_property(exports, "add_f64", try js.create_named_function("add_f64", add_f64));
+    try js.set_named_property(exports, "round_trip_string", try js.create_named_function("round_trip_string", round_trip_string));
+    try js.set_named_property(exports, "concat_strings", try js.create_named_function("concat_strings", concat_strings));
+    try js.set_named_property(exports, "new_string", try js.create_named_function("new_string", new_string));
+    try js.set_named_property(exports, "bool_true", try js.create_named_function("bool_true", bool_true));
+    try js.set_named_property(exports, "bool_false", try js.create_named_function("bool_false", bool_false));
+    try js.set_named_property(exports, "negate_bool", try js.create_named_function("negate_bool", negate_bool));
 
     return exports;
 }
