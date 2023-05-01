@@ -1,0 +1,12 @@
+{
+  "name": "zig-bindgen-js",
+  "scripts": {
+    "build": "zig build"
+  },
+  "devDependencies": {
+    "bun-types": "^0.5.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

@@ -72,7 +72,7 @@ pub const JSCtx = struct {
     pub const parse = if (@hasDecl(root, "custom_arg_parser")) root.custom_arg_parser else arg_parser;
     pub fn arg_parser(self: *JSCtx, comptime T: type, v: napi.napi_value, _: []const u8) Error!T {
         if (T == napi.napi_value) return v;
-        if (comptime trait.isZigString(T)) return self.get_string(v);
+        if (comptime T == []const u8) return self.get_string(v);
         // std.debug.print("{any}\n", .{@typeInfo(T)});
         // std.debug.print("{any}\n", .{T});
 
@@ -117,7 +117,10 @@ pub const JSCtx = struct {
     pub fn return_handler(self: *JSCtx, v: anytype, _: []const u8, c_array_len: *usize) Error!napi.napi_value {
         const T = @TypeOf(v);
         if (T == napi.napi_value) return v;
-        if (comptime trait.isZigString(T)) return self.create_string(v);
+        // coercion to string needs to be done in wrapped fn
+        if (comptime T == []const u8) {
+            return self.create_string(v);
+        }
         return switch (@typeInfo(T)) {
             .Void => self.undefined(),
             .Null => self.null(),
@@ -126,6 +129,18 @@ pub const JSCtx = struct {
             .Enum => self.create_number(@as(u32, @enumToInt(v))),
             .Struct => if (trait.isTuple(T)) self.create_tuple(v) else self.create_object_from(v),
             .Optional => if (v) |val| self.write(val, "") else self.null(),
+            // TODO: fix Array handling
+            .Array => |info| {
+                const data_type = info.child;
+                return switch (data_type) {
+                    f32, f64, i8, i16, i32, i64, u8, u16, u32, u64 => {
+                        var slice = v[0..v.len];
+                        // defer allocator.free(v);
+                        return self.create_typedarray(data_type, slice);
+                    },
+                    else => self.create_array_from(v),
+                };
+            },
             // TODO: better handling of pointers (not always going to leverage `wrap_object`)
             .Pointer => |info| switch (info.size) {
                 .One => self.wrap_object(v),
@@ -137,6 +152,8 @@ pub const JSCtx = struct {
                         else => self.create_array_from(v),
                     };
                 },
+                // TODO: handle `Many` pointer case
+                // .Many => {},
                 .Slice => {
                     const data_type = info.child;
                     return switch (data_type) {
@@ -147,7 +164,7 @@ pub const JSCtx = struct {
                         else => self.create_array_from(v),
                     };
                 },
-                else => @compileError("writing " ++ @tagName(@typeInfo(T)) ++ " " ++ @typeName(T) ++ " is not supported"),
+                else => @compileError("returning " ++ @tagName(@typeInfo(T)) ++ " " ++ @typeName(T) ++ " is not supported"),
             },
             else => @compileError("returning " ++ @tagName(@typeInfo(T)) ++ " " ++ @typeName(T) ++ " is not supported"),
         };
@@ -258,7 +275,7 @@ pub const JSCtx = struct {
             u8, u16 => res = @truncate(T, try self.get_number(u32, v)),
             u32, c_uint => try err_check(napi.napi_get_value_uint32(self.env, v, &res)),
             u64, usize => try err_check(napi.napi_get_value_bigint_uint64(self.env, v, &res, &loss)),
-            i8, i16 => res = @truncate(T, self.get_number(i32, v)),
+            i8, i16 => res = @truncate(T, try self.get_number(i32, v)),
             i32, c_int => try err_check(napi.napi_get_value_int32(self.env, v, &res)),
             i64, isize => try err_check(napi.napi_get_value_bigint_int64(self.env, v, &res, &loss)),
             f16, f32 => res = @floatCast(T, try self.get_number(f64, v)),
@@ -450,6 +467,7 @@ pub const JSCtx = struct {
         // TODO: add hook (scoped to fn call?) here to capture length of returned C array
         const F = @TypeOf(func);
         const Args = std.meta.ArgsTuple(F);
+        // std.debug.print("Args: {any}\n", .{Args});
         const Res = @typeInfo(F).Fn.return_type.?;
 
         // TODO: need to pass fn name as arg to `call` fn

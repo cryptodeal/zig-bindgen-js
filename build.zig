@@ -15,6 +15,13 @@ pub fn build(b: *std.Build) void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
+    // const bindings = b.addExecutable(.{
+    // .name = "node_client",
+    // .root_source_file = .{ .path = "node_bindings.zig" },
+    // .target = target,
+    // });
+    // const bindings_step = b.addRunArtifact(bindings);
+
     const lib = b.addSharedLibrary(.{
         .name = "zig-bindgen-js",
         // In this case the main source file is merely a path, however, in more
@@ -32,11 +39,15 @@ pub fn build(b: *std.Build) void {
     lib.addIncludePath("cpp");
     lib.addIncludePath("libs/napi-headers/include");
     lib.linkLibC();
+
+    // lib.step.dependOn(&bindings_step.step);
+
     // This declares intent for the library to be installed into the standard
     // location when the user invokes the "install" step (the default step when
     // running `zig build`).
     b.installArtifact(lib);
-    b.installLibFile(b.pathJoin(&.{ "zig-out/lib", lib.out_lib_filename }), "example.node");
+    const copy_node_step = b.addInstallLibFile(lib.getOutputSource(), "example.node");
+    b.getInstallStep().dependOn(&copy_node_step.step);
 
     // Creates a step for unit testing.
     const main_tests = b.addTest(.{
