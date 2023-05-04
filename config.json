@@ -1,0 +1,13 @@
+{
+  "ts_out_path": "wrapper/index.ts",
+  "bindings_path": "zig-out/lib/example.node",
+  "wrapped_methods": [
+    {
+      "name": "add",
+      "args": [
+        { "name": "a" },
+        { "name": "b"}
+      ]
+    }
+  ]
+}

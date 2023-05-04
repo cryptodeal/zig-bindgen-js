@@ -152,6 +152,16 @@ fn negate_bool(v: bool) bool {
     return !v;
 }
 
+const DemoStruct = struct {
+    a: i32,
+    b: i32,
+    c: []const u8,
+};
+
+fn returns_struct() DemoStruct {
+    return DemoStruct{ .a = 1, .b = 2, .c = "Hello, World!" };
+}
+
 fn initModule(js: *napigen.JSCtx, exports: napigen.napi_value) !napigen.napi_value {
     @setEvalBranchQuota(100_000);
     inline for (comptime std.meta.declarations(fl)) |d| {
@@ -194,20 +204,21 @@ fn initModule(js: *napigen.JSCtx, exports: napigen.napi_value) !napigen.napi_val
     try js.set_named_property(exports, "bool_true", try js.create_named_function("bool_true", bool_true));
     try js.set_named_property(exports, "bool_false", try js.create_named_function("bool_false", bool_false));
     try js.set_named_property(exports, "negate_bool", try js.create_named_function("negate_bool", negate_bool));
+    try js.set_named_property(exports, "returns_struct", try js.create_named_function("returns_struct", returns_struct));
 
     return exports;
 }
 
 const parse_external = [_][]const u8{ "fl_dtype", "fl_dispose", "fl_asContiguousTensor", "fl_elements", "fl_float32Buffer" };
 
-pub fn custom_arg_parser(js: *napigen.JSCtx, comptime T: type, v: napigen.napi_value, comptime name: []const u8) !T {
+pub fn custom_arg_parser(js: *napigen.JSCtx, comptime T: type, v: napigen.napi_value, comptime ctx: napigen.FnCtx) !T {
     inline for (parse_external) |n| {
-        if (comptime std.mem.eql(u8, name, n) and T == ?*anyopaque) {
+        if (comptime std.mem.eql(u8, ctx.name, n) and T == ?*anyopaque) {
             return js.get_external(T, v);
         }
     }
 
-    return js.arg_parser(T, v, name);
+    return js.arg_parser(T, v, ctx);
 }
 
 fn finalize_tensor(_: napigen.napi_env, finalize_data: ?*anyopaque, finalize_hint: ?*anyopaque) callconv(.C) void {
@@ -216,12 +227,12 @@ fn finalize_tensor(_: napigen.napi_env, finalize_data: ?*anyopaque, finalize_hin
 
 const create_external = [_][]const u8{ "fl_tensorFromFloat32Buffer", "fl_asContiguousTensor" };
 
-pub fn custom_return_handler(js: *napigen.JSCtx, v: anytype, comptime name: []const u8, c_array_len: *usize) !napigen.napi_value {
+pub fn custom_return_handler(js: *napigen.JSCtx, v: anytype, comptime ctx: napigen.FnCtx) !napigen.napi_value {
     inline for (create_external) |n| {
-        if (comptime std.mem.eql(u8, name, n)) {
+        if (comptime std.mem.eql(u8, ctx.name, n)) {
             return js.create_external(@ptrCast(*anyopaque, @constCast(v)), finalize_tensor, null);
         }
     }
 
-    return js.return_handler(v, name, c_array_len);
+    return js.return_handler(v, ctx);
 }

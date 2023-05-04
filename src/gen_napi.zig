@@ -63,6 +63,12 @@ const TransientAllocator = struct {
     }
 };
 
+// TODO: potentially useful to provide addtl context about function call
+pub const FnCtx = struct {
+    name: []const u8,
+    len: *usize,
+};
+
 pub const JSCtx = struct {
     env: napi.napi_env,
     refs: std.AutoHashMapUnmanaged(usize, napi.napi_ref) = .{},
@@ -70,11 +76,9 @@ pub const JSCtx = struct {
 
     // parse hook (handles conversion: JS -> Native)
     pub const parse = if (@hasDecl(root, "custom_arg_parser")) root.custom_arg_parser else arg_parser;
-    pub fn arg_parser(self: *JSCtx, comptime T: type, v: napi.napi_value, _: []const u8) Error!T {
+    pub fn arg_parser(self: *JSCtx, comptime T: type, v: napi.napi_value, comptime ctx: FnCtx) Error!T {
         if (T == napi.napi_value) return v;
         if (comptime T == []const u8) return self.get_string(v);
-        // std.debug.print("{any}\n", .{@typeInfo(T)});
-        // std.debug.print("{any}\n", .{T});
 
         return switch (@typeInfo(T)) {
             .Void => void{},
@@ -82,8 +86,8 @@ pub const JSCtx = struct {
             .Bool => self.get_boolean(v),
             .Int, .ComptimeInt, .Float, .ComptimeFloat => self.get_number(T, v),
             .Enum => std.meta.intToEnum(T, self.get_number(u32, v)),
-            .Struct => if (trait.isTuple(T)) self.get_tuple(T, v) else self.get_object(T, v),
-            .Optional => |info| if (try self.type_of(v) == napi.napi_null) null else self.parse(info.child, v, ""),
+            .Struct => if (trait.isTuple(T)) self.get_tuple(T, v, ctx) else self.get_object(T, v, ctx),
+            .Optional => |info| if (try self.type_of(v) == napi.napi_null) null else self.parse(info.child, v, ctx),
             // TODO: better handling of pointers (not always going to leverage `wrap_object`)
             .Pointer => |info| switch (info.size) {
                 // handle by wrapping as user must define finalizer for `Napi::External` via hooks
@@ -93,7 +97,7 @@ pub const JSCtx = struct {
                     const data_type = info.child;
                     return switch (data_type) {
                         f32, f64, i8, i16, i32, i64, u8, u16, u32, u64 => self.get_typedarray_data(data_type, v),
-                        else => (try self.get_array(data_type, v)).ptr,
+                        else => (try self.get_array(data_type, v, ctx)).ptr,
                     };
                 },
                 .Slice => {
@@ -103,7 +107,7 @@ pub const JSCtx = struct {
                             const len = try self.get_typedarray_length(v);
                             return (try self.get_typedarray_data(data_type, v))[0..len];
                         },
-                        else => self.get_array(data_type, v),
+                        else => self.get_array(data_type, v, ctx),
                     };
                 },
                 else => @compileError("reading " ++ @tagName(@typeInfo(T)) ++ " " ++ @typeName(T) ++ " is not supported"),
@@ -114,7 +118,7 @@ pub const JSCtx = struct {
 
     // write hook (handles conversion: Native -> JS)
     pub const write = if (@hasDecl(root, "custom_return_handler")) root.custom_return_handler else return_handler;
-    pub fn return_handler(self: *JSCtx, v: anytype, _: []const u8, c_array_len: *usize) Error!napi.napi_value {
+    pub fn return_handler(self: *JSCtx, v: anytype, comptime ctx: FnCtx) Error!napi.napi_value {
         const T = @TypeOf(v);
         if (T == napi.napi_value) return v;
         // coercion to string needs to be done in wrapped fn
@@ -127,8 +131,8 @@ pub const JSCtx = struct {
             .Bool => self.create_boolean(v),
             .Int, .ComptimeInt, .Float, .ComptimeFloat => self.create_number(v),
             .Enum => self.create_number(@as(u32, @enumToInt(v))),
-            .Struct => if (trait.isTuple(T)) self.create_tuple(v) else self.create_object_from(v),
-            .Optional => if (v) |val| self.write(val, "") else self.null(),
+            .Struct => if (trait.isTuple(T)) self.create_tuple(v, ctx) else self.create_object_from(v, ctx),
+            .Optional => if (v) |val| self.write(val, ctx) else self.null(),
             // TODO: fix Array handling
             .Array => |info| {
                 const data_type = info.child;
@@ -138,7 +142,7 @@ pub const JSCtx = struct {
                         // defer allocator.free(v);
                         return self.create_typedarray(data_type, slice);
                     },
-                    else => self.create_array_from(v),
+                    else => self.create_array_from(v, ctx),
                 };
             },
             // TODO: better handling of pointers (not always going to leverage `wrap_object`)
@@ -148,8 +152,8 @@ pub const JSCtx = struct {
                     // if JS `TypedArray` equivalent exists, handle as such
                     const data_type = info.child;
                     return switch (data_type) {
-                        f32, f64, i8, i16, i32, i64, u8, u16, u32, u64 => self.create_typedarray(data_type, v[0..c_array_len.*]),
-                        else => self.create_array_from(v),
+                        f32, f64, i8, i16, i32, i64, u8, u16, u32, u64 => self.create_typedarray(data_type, v[0..ctx.len.*]),
+                        else => self.create_array_from(v, ctx),
                     };
                 },
                 // TODO: handle `Many` pointer case
@@ -161,7 +165,7 @@ pub const JSCtx = struct {
                             defer allocator.free(v);
                             return self.create_typedarray(data_type, v);
                         },
-                        else => self.create_array_from(v),
+                        else => self.create_array_from(v, ctx),
                     };
                 },
                 else => @compileError("returning " ++ @tagName(@typeInfo(T)) ++ " " ++ @typeName(T) ++ " is not supported"),
@@ -323,10 +327,10 @@ pub const JSCtx = struct {
     }
 
     /// transform native array/slice to JS `Array` (if no compatible `TypedArray` exists)
-    pub fn create_array_from(self: *JSCtx, v: anytype) Error!napi.napi_value {
+    pub fn create_array_from(self: *JSCtx, v: anytype, comptime ctx: FnCtx) Error!napi.napi_value {
         const res = try self.create_array_with_length(@truncate(u32, v.len));
         for (v, 0..) |val, i| {
-            try self.set_element(res, @truncate(u32, i), try self.write(val));
+            try self.set_element(res, @truncate(u32, i), try self.write(val, ctx));
         }
         return res;
     }
@@ -339,11 +343,11 @@ pub const JSCtx = struct {
     }
 
     /// parse JS Array to native slice.
-    pub fn get_array(self: *JSCtx, comptime T: type, arr: napi.napi_value) Error![]T {
+    pub fn get_array(self: *JSCtx, comptime T: type, arr: napi.napi_value, comptime ctx: FnCtx) Error![]T {
         var len: u32 = try self.get_array_length(arr);
         var res = try self.mem.allocator().alloc(T, len);
         for (res, 0..) |*v, i| {
-            v.* = try self.parse(T, try self.get_element(arr, @intCast(u32, i)), "");
+            v.* = try self.parse(T, try self.get_element(arr, @intCast(u32, i)), ctx);
         }
         return res;
     }
@@ -361,23 +365,23 @@ pub const JSCtx = struct {
     }
 
     /// transform `tuple` to JS `[T1, T2... etc]`
-    pub fn create_tuple(self: *JSCtx, v: anytype) Error!napi.napi_value {
+    pub fn create_tuple(self: *JSCtx, v: anytype, comptime ctx: FnCtx) Error!napi.napi_value {
         const fields = std.meta.fields(@TypeOf(v));
         var res = try self.create_array_with_length(fields.len);
         inline for (fields, 0..) |field, i| {
-            var tmp_val = try self.write(@field(v, field.name));
+            var tmp_val = try self.write(@field(v, field.name), ctx);
             try self.set_element(res, @truncate(u32, i), tmp_val);
         }
         return res;
     }
 
     /// parse JS `[T1, T2... etc]` to `tuple`
-    pub fn get_tuple(self: *JSCtx, comptime T: type, v: napi.napi_value) Error!T {
+    pub fn get_tuple(self: *JSCtx, comptime T: type, v: napi.napi_value, comptime ctx: FnCtx) Error!T {
         const fields = std.meta.fields(T);
         var res: T = undefined;
         inline for (fields, 0..) |field, i| {
             var tmp_val = try self.get_element(v, @truncate(u32, i));
-            @field(res, field.name) = try self.parse(field.type, tmp_val);
+            @field(res, field.name) = try self.parse(field.type, tmp_val, ctx);
         }
         return res;
     }
@@ -390,20 +394,22 @@ pub const JSCtx = struct {
     }
 
     /// transform `struct` to JS `Object`
-    pub fn create_object_from(self: *JSCtx, v: anytype) Error!napi.napi_value {
+    pub fn create_object_from(self: *JSCtx, v: anytype, comptime ctx: FnCtx) Error!napi.napi_value {
         var res: napi.napi_value = try self.create_object();
         inline for (std.meta.fields(@TypeOf(v))) |field| {
-            var tmp_val = try self.write(@field(v, field.name));
+            var tmp_val = try self.write(@field(v, field.name), ctx);
             try self.set_named_property(res, field.name ++ "", tmp_val);
         }
+
+        return res;
     }
 
     /// parse `struct` from JS `Object`
-    pub fn get_object(self: *JSCtx, comptime T: type, v: napi.napi_value) Error!T {
+    pub fn get_object(self: *JSCtx, comptime T: type, v: napi.napi_value, comptime ctx: FnCtx) Error!T {
         var res: T = undefined;
         inline for (std.meta.fields(T)) |field| {
             var tmp_val = try self.get_named_property(v, field.name ++ "");
-            @field(res, field.name) = try self.parse(field.type, tmp_val);
+            @field(res, field.name) = try self.parse(field.type, tmp_val, ctx);
         }
         return res;
     }
@@ -471,8 +477,8 @@ pub const JSCtx = struct {
 
         // TODO: need to pass fn name as arg to `call` fn
         const FnUtils = struct {
-            pub const fn_name = name;
             var c_array_len: usize = 0;
+            const fn_ctx = FnCtx{ .name = name, .len = &c_array_len };
 
             fn call(env: napi.napi_env, cb: napi.napi_callback_info) callconv(.C) napi.napi_value {
                 var ctx = JSCtx.get_instance(env);
@@ -483,9 +489,9 @@ pub const JSCtx = struct {
                 const res = @call(.auto, func, args);
 
                 if (comptime trait.is(.ErrorUnion)(Res)) {
-                    return if (res) |r| ctx.write(r, fn_name, &c_array_len) catch |err| ctx.create_error(err) else |err| ctx.create_error(err);
+                    return if (res) |r| ctx.write(r, fn_ctx) catch |err| ctx.create_error(err) else |err| ctx.create_error(err);
                 } else {
-                    return ctx.write(res, fn_name, &c_array_len) catch |err| ctx.create_error(err);
+                    return ctx.write(res, fn_ctx) catch |err| ctx.create_error(err);
                 }
             }
 
@@ -506,7 +512,7 @@ pub const JSCtx = struct {
                     if (expected_arg_count != arg_count and field.type == [*c]usize) {
                         @field(args, field.name) = &c_array_len;
                     } else {
-                        @field(args, field.name) = try ctx.parse(field.type, arg_values[i], fn_name);
+                        @field(args, field.name) = try ctx.parse(field.type, arg_values[i], fn_ctx);
                     }
                     i += 1;
                 }
@@ -532,7 +538,7 @@ pub const JSCtx = struct {
         const Args = @TypeOf(args);
         var arg_values: [std.meta.fields(Args).len]napi.napi_value = undefined;
         inline for (std.meta.fields(Args), 0..) |field, i| {
-            arg_values[i] = try self.write(@field(args, field.name), "");
+            arg_values[i] = try self.write(@field(args, field.name), FnCtx{ .name = "anonymous" });
         }
         var res: napi.napi_value = undefined;
         try err_check(napi.napi_call_function(self.env, r, func, arg_values.len, &arg_values, &res));
