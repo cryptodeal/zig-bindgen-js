@@ -8,80 +8,80 @@ comptime {
     napigen.define_module(initModule);
 }
 
-fn slice_to_Int8Array() ![]i8 {
-    var slice: []i8 = try napigen.allocator.alloc(i8, 100);
+fn slice_to_Int8Array(allocator: std.mem.Allocator) ![]i8 {
+    var slice: []i8 = try allocator.alloc(i8, 100);
     for (slice, 0..) |_, i| {
         slice[i] = @intCast(i8, i);
     }
     return slice;
 }
 
-fn slice_to_Int16Array() ![]i16 {
-    var slice: []i16 = try napigen.allocator.alloc(i16, 100);
+fn slice_to_Int16Array(allocator: std.mem.Allocator) ![]i16 {
+    var slice: []i16 = try allocator.alloc(i16, 100);
     for (slice, 0..) |_, i| {
         slice[i] = @intCast(i16, i);
     }
     return slice;
 }
 
-fn slice_to_Int32Array() ![]i32 {
-    var slice: []i32 = try napigen.allocator.alloc(i32, 100);
+fn slice_to_Int32Array(allocator: std.mem.Allocator) ![]i32 {
+    var slice: []i32 = try allocator.alloc(i32, 100);
     for (slice, 0..) |_, i| {
         slice[i] = @intCast(i32, i);
     }
     return slice;
 }
 
-fn slice_to_BigInt64Array() ![]i64 {
-    var slice: []i64 = try napigen.allocator.alloc(i64, 100);
+fn slice_to_BigInt64Array(allocator: std.mem.Allocator) ![]i64 {
+    var slice: []i64 = try allocator.alloc(i64, 100);
     for (slice, 0..) |_, i| {
         slice[i] = @intCast(i64, i);
     }
     return slice;
 }
 
-fn slice_to_Uint8Array() ![]u8 {
-    var slice: []u8 = try napigen.allocator.alloc(u8, 100);
+fn slice_to_Uint8Array(allocator: std.mem.Allocator) ![]u8 {
+    var slice: []u8 = try allocator.alloc(u8, 100);
     for (slice, 0..) |_, i| {
         slice[i] = @intCast(u8, i);
     }
     return slice;
 }
 
-fn slice_to_Uint16Array() ![]u16 {
-    var slice: []u16 = try napigen.allocator.alloc(u16, 100);
+fn slice_to_Uint16Array(allocator: std.mem.Allocator) ![]u16 {
+    var slice: []u16 = try allocator.alloc(u16, 100);
     for (slice, 0..) |_, i| {
         slice[i] = @intCast(u16, i);
     }
     return slice;
 }
 
-fn slice_to_Uint32Array() ![]u32 {
-    var slice: []u32 = try napigen.allocator.alloc(u32, 100);
+fn slice_to_Uint32Array(allocator: std.mem.Allocator) ![]u32 {
+    var slice: []u32 = try allocator.alloc(u32, 100);
     for (slice, 0..) |_, i| {
         slice[i] = @intCast(u32, i);
     }
     return slice;
 }
 
-fn slice_to_BigUint64Array() ![]u64 {
-    var slice: []u64 = try napigen.allocator.alloc(u64, 100);
+fn slice_to_BigUint64Array(allocator: std.mem.Allocator) ![]u64 {
+    var slice: []u64 = try allocator.alloc(u64, 100);
     for (slice, 0..) |_, i| {
         slice[i] = @intCast(u64, i);
     }
     return slice;
 }
 
-fn slice_to_Float32Array() ![]f32 {
-    var slice: []f32 = try napigen.allocator.alloc(f32, 100);
+fn slice_to_Float32Array(allocator: std.mem.Allocator) ![]f32 {
+    var slice: []f32 = try allocator.alloc(f32, 100);
     for (slice, 0..) |_, i| {
         slice[i] = @intToFloat(f32, i);
     }
     return slice;
 }
 
-fn slice_to_Float64Array() ![]f64 {
-    var slice: []f64 = try napigen.allocator.alloc(f64, 100);
+fn slice_to_Float64Array(allocator: std.mem.Allocator) ![]f64 {
+    var slice: []f64 = try allocator.alloc(f64, 100);
     for (slice, 0..) |_, i| {
         slice[i] = @intToFloat(f64, i);
     }
@@ -132,8 +132,8 @@ fn round_trip_string(s: []const u8) []const u8 {
     return s;
 }
 
-fn concat_strings(a: []const u8, b: []const u8, c: []const u8) ![]const u8 {
-    return try std.mem.join(napigen.allocator, "", &.{ a, b, c });
+fn concat_strings(allocator: std.mem.Allocator, a: []const u8, b: []const u8, c: []const u8) ![]const u8 {
+    return try std.mem.join(allocator, "", &.{ a, b, c });
 }
 
 fn new_string() []const u8 {
@@ -160,6 +160,10 @@ const DemoStruct = struct {
 
 fn returns_struct() DemoStruct {
     return DemoStruct{ .a = 1, .b = 2, .c = "Hello, World!" };
+}
+
+fn round_trip_struct(v: DemoStruct) DemoStruct {
+    return DemoStruct{ .a = v.a + 1, .b = v.b + 1, .c = v.c };
 }
 
 fn initModule(js: *napigen.JSCtx, exports: napigen.napi_value) !napigen.napi_value {
@@ -205,6 +209,7 @@ fn initModule(js: *napigen.JSCtx, exports: napigen.napi_value) !napigen.napi_val
     try js.set_named_property(exports, "bool_false", try js.create_named_function("bool_false", bool_false));
     try js.set_named_property(exports, "negate_bool", try js.create_named_function("negate_bool", negate_bool));
     try js.set_named_property(exports, "returns_struct", try js.create_named_function("returns_struct", returns_struct));
+    try js.set_named_property(exports, "round_trip_struct", try js.create_named_function("round_trip_struct", round_trip_struct));
 
     return exports;
 }

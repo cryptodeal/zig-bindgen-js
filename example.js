@@ -44,4 +44,3 @@ console.log(u32_slice);
 const u64_slice = addon.slice_to_BigUint64Array();
 console.log(u64_slice);
 
-

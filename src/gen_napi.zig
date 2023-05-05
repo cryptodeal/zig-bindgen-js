@@ -122,9 +122,8 @@ pub const JSCtx = struct {
         const T = @TypeOf(v);
         if (T == napi.napi_value) return v;
         // coercion to string needs to be done in wrapped fn
-        if (comptime T == []const u8) {
-            return self.create_string(v);
-        }
+        if (comptime T == []const u8) return self.create_string(v);
+
         return switch (@typeInfo(T)) {
             .Void => self.undefined(),
             .Null => self.null(),
@@ -139,7 +138,6 @@ pub const JSCtx = struct {
                 return switch (data_type) {
                     f32, f64, i8, i16, i32, i64, u8, u16, u32, u64 => {
                         var slice = v[0..v.len];
-                        // defer allocator.free(v);
                         return self.create_typedarray(data_type, slice);
                     },
                     else => self.create_array_from(v, ctx),
@@ -162,7 +160,6 @@ pub const JSCtx = struct {
                     const data_type = info.child;
                     return switch (data_type) {
                         f32, f64, i8, i16, i32, i64, u8, u16, u32, u64 => {
-                            defer allocator.free(v);
                             return self.create_typedarray(data_type, v);
                         },
                         else => self.create_array_from(v, ctx),
@@ -503,11 +500,19 @@ pub const JSCtx = struct {
 
                 const expected_arg_count = @typeInfo(Args).Struct.fields.len;
                 var i: usize = 0;
+                var real_count: usize = 0;
                 inline for (std.meta.fields(Args)) |field| {
+                    real_count += 1;
+                    if (comptime field.type == std.mem.Allocator) {
+                        @field(args, field.name) = ctx.mem.allocator();
+                        continue;
+                    }
+
                     if (comptime field.type == *JSCtx) {
                         @field(args, field.name) = ctx;
                         continue;
                     }
+
                     // hacky solution to snag length of C array ptr returned from fn
                     if (expected_arg_count != arg_count and field.type == [*c]usize) {
                         @field(args, field.name) = &c_array_len;
@@ -516,12 +521,9 @@ pub const JSCtx = struct {
                     }
                     i += 1;
                 }
-                // std.debug.print("native arg count: {any}\n", .{expected_arg_count});
-                // std.debug.print("actual count: {d}\n", .{i});
-                // std.debug.print("arg count from JS call (received): {d}\n", .{arg_count});
 
-                if (i != expected_arg_count) {
-                    std.debug.print("expected {d} args\n", .{arg_count});
+                if (real_count != expected_arg_count) {
+                    std.debug.print("expected {d} args; received {d}\n", .{ arg_count, i });
                     return error.InvalidArgumentCount;
                 }
                 return args;
