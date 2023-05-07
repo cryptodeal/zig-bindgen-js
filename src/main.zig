@@ -257,7 +257,7 @@ const create_external = [_][]const u8{ "fl_tensorFromFloat32Buffer", "fl_asConti
 pub fn custom_return_handler(js: *napigen.JSCtx, v: anytype, comptime ctx: napigen.FnCtx) !napigen.napi_value {
     inline for (create_external) |n| {
         if (comptime std.mem.eql(u8, ctx.name, n)) {
-            return js.create_external(@ptrCast(*anyopaque, @constCast(v)), finalize_tensor, null);
+            return js.create_external_with_finalizer(@ptrCast(*anyopaque, @constCast(v)), finalize_tensor, null);
         }
     }
 

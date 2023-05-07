@@ -15,7 +15,7 @@ describe('NAPI - Object', () => {
     expect(struct_val.c).toEqual("Hello, World!");
   })
 
-  test('passes `*StructPtr` as Wrapped Object', () => {
+  test('passes `*StructPtr` as `External<StructPtr>`', () => {
     const wrapped = addon.wrapped_struct(100, BigInt(2000));
     expect(typeof wrapped).toBe('object');
     expect(addon.wrapped_struct_get_a(wrapped)).toEqual(100);

@@ -97,7 +97,7 @@ pub const JSCtx = struct {
             // TODO: better handling of pointers (not always going to leverage `wrap_object`)
             .Pointer => |info| switch (info.size) {
                 // handle by wrapping as user must define finalizer for `Napi::External` via hooks
-                .One => self.unwrap_object(info.child, v),
+                .One => self.get_external(T, v),
                 .C => {
                     // if JS `TypedArray` equivalent exists, handle as such
                     const data_type = info.child;
@@ -151,7 +151,7 @@ pub const JSCtx = struct {
             },
             // TODO: better handling of pointers (not always going to leverage `wrap_object`)
             .Pointer => |info| switch (info.size) {
-                .One => self.wrap_object(v),
+                .One => self.create_external(v),
                 .C => {
                     // if JS `TypedArray` equivalent exists, handle as such
                     const data_type = info.child;
@@ -435,10 +435,9 @@ pub const JSCtx = struct {
         if (comptime trait.isPtrTo(.Fn)(@TypeOf(v))) @compileError("use create_function() to export fn");
         var res: napi.napi_value = undefined;
         if (self.refs.get(@ptrToInt(v))) |r| {
-            if (napi.napi_get_reference_value(self.env, r, &res) == napi.napi_ok) {
-                return res;
-            } else {
-                _ = napi.napi_delete_reference(self.env, r);
+            switch (napi.napi_get_reference_value(self.env, r, &res)) {
+                napi.napi_ok => return res,
+                else => _ = napi.napi_delete_reference(self.env, r),
             }
         }
         var ref: napi.napi_ref = undefined;
@@ -475,6 +474,7 @@ pub const JSCtx = struct {
             _ = ctx.refs.remove(ptr_int);
         }
     }
+
     /// Create a JS function.
     pub fn create_function(self: *JSCtx, comptime func: anytype) Error!napi.napi_value {
         return self.create_named_function("anonymous", func);
@@ -579,7 +579,20 @@ pub const JSCtx = struct {
     }
 
     /// return `*T` as JS `External<T>`
-    pub fn create_external(self: *JSCtx, v: *anyopaque, finalizer: napi.napi_finalize, hint: ?*anyopaque) Error!napi.napi_value {
+    pub fn create_external(self: *JSCtx, v: anytype) Error!napi.napi_value {
+        if (comptime trait.isPtrTo(.Fn)(@TypeOf(v))) @compileError("use create_function() to export fn");
+        const T = @TypeOf(v);
+        const hint = WrappedCtx{
+            .size = comptime @sizeOf(T),
+            .alignment = comptime @alignOf(T),
+        };
+        var res: napi.napi_value = undefined;
+        try err_check(napi.napi_create_external(self.env, v, &finalize_external, @ptrCast(*anyopaque, @alignCast(hint.alignment, @constCast(&hint))), &res));
+        return res;
+    }
+
+    /// return `*T` as JS `External<T>` w user defined finalizer/hint
+    pub fn create_external_with_finalizer(self: *JSCtx, v: *anyopaque, finalizer: napi.napi_finalize, hint: ?*anyopaque) Error!napi.napi_value {
         if (comptime trait.isPtrTo(.Fn)(@TypeOf(v))) @compileError("use create_function() to export fn");
         var res: napi.napi_value = undefined;
         try err_check(napi.napi_create_external(self.env, v, finalizer, hint, &res));
@@ -589,9 +602,16 @@ pub const JSCtx = struct {
     /// parse JS `External<T>` to `*T`
     pub fn get_external(self: *JSCtx, comptime T: type, v: napi.napi_value) Error!T {
         var res: T = undefined;
-        try err_check(napi.napi_get_value_external(self.env, v, &res));
+        try err_check(napi.napi_get_value_external(self.env, v, @ptrCast([*c]?*anyopaque, &res)));
         return res;
     }
+
+    fn finalize_external(_: napi.napi_env, ptr: ?*anyopaque, hint: ?*anyopaque) callconv(.C) void {
+        const finalizer_ctx = @ptrCast(*WrappedCtx, @alignCast(@alignOf(*WrappedCtx), hint.?));
+        // TODO: verify this worked to free allocated mem from wrapped struct
+        allocator.rawFree(@ptrCast([*]u8, ptr.?)[0..finalizer_ctx.size], finalizer_ctx.alignment, @returnAddress());
+    }
+
     // TODO: get `ArrayBuffer`
     pub fn create_arraybuffer(self: *JSCtx, comptime T: type, v: anytype) Error!napi.napi_value {
         const bytes = comptime @sizeOf(T);
