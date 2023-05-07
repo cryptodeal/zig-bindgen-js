@@ -14,4 +14,11 @@ describe('NAPI - Object', () => {
     expect(struct_val.b).toEqual(obj.b + 1);
     expect(struct_val.c).toEqual("Hello, World!");
   })
+
+  test('passes `*StructPtr` as Wrapped Object', () => {
+    const wrapped = addon.wrapped_struct(100, BigInt(2000));
+    expect(typeof wrapped).toBe('object');
+    expect(addon.wrapped_struct_get_a(wrapped)).toEqual(100);
+    expect(addon.wrapped_struct_get_b(wrapped)).toEqual(BigInt(2000));
+  })
 })

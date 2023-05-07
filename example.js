@@ -44,3 +44,7 @@ console.log(u32_slice);
 const u64_slice = addon.slice_to_BigUint64Array();
 console.log(u64_slice);
 
+const wrapped = addon.wrapped_struct(100, BigInt(2000));
+console.log(wrapped);
+console.log(addon.wrapped_struct_get_a(wrapped));
+console.log(addon.wrapped_struct_get_b(wrapped));

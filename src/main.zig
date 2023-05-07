@@ -166,6 +166,25 @@ fn round_trip_struct(v: DemoStruct) DemoStruct {
     return DemoStruct{ .a = v.a + 1, .b = v.b + 1, .c = v.c };
 }
 
+const DemoStruct2 = struct {
+    a: i32,
+    b: i64,
+};
+
+fn wrapped_struct(alloc: std.mem.Allocator, a: i32, b: i64) !*DemoStruct2 {
+    var res: *DemoStruct2 = try alloc.create(DemoStruct2);
+    res.* = DemoStruct2{ .a = a, .b = b };
+    return res;
+}
+
+fn wrapped_struct_get_a(v: *DemoStruct2) i32 {
+    return v.a;
+}
+
+fn wrapped_struct_get_b(v: *DemoStruct2) i64 {
+    return v.b;
+}
+
 fn initModule(js: *napigen.JSCtx, exports: napigen.napi_value) !napigen.napi_value {
     @setEvalBranchQuota(100_000);
     inline for (comptime std.meta.declarations(fl)) |d| {
@@ -210,6 +229,9 @@ fn initModule(js: *napigen.JSCtx, exports: napigen.napi_value) !napigen.napi_val
     try js.set_named_property(exports, "negate_bool", try js.create_named_function("negate_bool", negate_bool));
     try js.set_named_property(exports, "returns_struct", try js.create_named_function("returns_struct", returns_struct));
     try js.set_named_property(exports, "round_trip_struct", try js.create_named_function("round_trip_struct", round_trip_struct));
+    try js.set_named_property(exports, "wrapped_struct", try js.create_named_function("wrapped_struct", wrapped_struct));
+    try js.set_named_property(exports, "wrapped_struct_get_a", try js.create_named_function("wrapped_struct_get_a", wrapped_struct_get_a));
+    try js.set_named_property(exports, "wrapped_struct_get_b", try js.create_named_function("wrapped_struct_get_b", wrapped_struct_get_b));
 
     return exports;
 }

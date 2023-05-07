@@ -67,6 +67,12 @@ const TransientAllocator = struct {
 pub const FnCtx = struct {
     name: []const u8,
     len: *usize,
+    alloc: std.heap.ArenaAllocator = undefined,
+};
+
+const WrappedCtx = struct {
+    size: usize,
+    alignment: u8,
 };
 
 pub const JSCtx = struct {
@@ -120,7 +126,7 @@ pub const JSCtx = struct {
     pub const write = if (@hasDecl(root, "custom_return_handler")) root.custom_return_handler else return_handler;
     pub fn return_handler(self: *JSCtx, v: anytype, comptime ctx: FnCtx) Error!napi.napi_value {
         const T = @TypeOf(v);
-        if (T == napi.napi_value) return v;
+        if (comptime T == napi.napi_value) return v;
         // coercion to string needs to be done in wrapped fn
         if (comptime T == []const u8) return self.create_string(v);
 
@@ -437,7 +443,13 @@ pub const JSCtx = struct {
         }
         var ref: napi.napi_ref = undefined;
         res = try self.create_object();
-        try err_check(napi.napi_wrap(self.env, res, @constCast(v), &delete_ref, @ptrCast(*anyopaque, @constCast(v)), &ref));
+        std.debug.print("attempt wrap object\n", .{});
+        const T = @TypeOf(v);
+        const hint = WrappedCtx{
+            .size = comptime @sizeOf(T),
+            .alignment = comptime @alignOf(T),
+        };
+        try err_check(napi.napi_wrap(self.env, res, @constCast(v), &delete_ref, @ptrCast(*anyopaque, @alignCast(hint.alignment, @constCast(&hint))), &ref));
         try self.refs.put(allocator, @ptrToInt(v), ref);
         return res;
     }
@@ -449,9 +461,12 @@ pub const JSCtx = struct {
         return res;
     }
 
-    fn delete_ref(env: napi.napi_env, _: ?*anyopaque, ptr: ?*anyopaque) callconv(.C) void {
+    fn delete_ref(env: napi.napi_env, ptr: ?*anyopaque, hint: ?*anyopaque) callconv(.C) void {
+        const finalizer_ctx = @ptrCast(*WrappedCtx, @alignCast(@alignOf(*WrappedCtx), hint.?));
         var ctx = JSCtx.get_instance(env);
         const ptr_int = @ptrToInt(ptr.?);
+        // TODO: verify this worked to free allocated mem from wrapped struct
+        allocator.rawFree(@ptrCast([*]u8, ptr.?)[0..finalizer_ctx.size], finalizer_ctx.alignment, @returnAddress());
         if (ctx.refs.get(ptr_int)) |r| {
             var v: napi.napi_value = undefined;
             // if reference is valid/new, return early
@@ -504,7 +519,23 @@ pub const JSCtx = struct {
                 inline for (std.meta.fields(Args)) |field| {
                     real_count += 1;
                     if (comptime field.type == std.mem.Allocator) {
-                        @field(args, field.name) = ctx.mem.allocator();
+                        // TODO: use below info to pass either ArenaAllocator or C_Allocator (avoid copy w finalizer)
+                        switch (@typeInfo(Res)) {
+                            .ErrorUnion => |e| {
+                                switch (@typeInfo(e.payload)) {
+                                    .Pointer => |info| {
+                                        if (info.size == .One) {
+                                            @field(args, field.name) = allocator;
+                                        } else {
+                                            @field(args, field.name) = ctx.mem.allocator();
+                                        }
+                                    },
+                                    else => @field(args, field.name) = ctx.mem.allocator(),
+                                }
+                            },
+                            else => @field(args, field.name) = ctx.mem.allocator(),
+                        }
+                        // @field(args, field.name) = ctx.mem.allocator();
                         continue;
                     }
 
@@ -566,8 +597,9 @@ pub const JSCtx = struct {
         const bytes = comptime @sizeOf(T);
         var data: ?*anyopaque = undefined;
         var res: napi.napi_value = undefined;
+        const byte_len: usize = v.len * bytes;
         // TODO: avoid the copy?
-        try err_check(napi.napi_create_arraybuffer(self.env, v.len * bytes, &data, &res));
+        try err_check(napi.napi_create_arraybuffer(self.env, byte_len, &data, &res));
         std.mem.copy(T, @ptrCast([*]T, @alignCast(@alignOf(T), data.?))[0..v.len], v[0..v.len]);
         return res;
     }
