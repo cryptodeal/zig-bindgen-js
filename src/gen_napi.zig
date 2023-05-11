@@ -442,13 +442,10 @@ pub const JSCtx = struct {
         }
         var ref: napi.napi_ref = undefined;
         res = try self.create_object();
-        std.debug.print("attempt wrap object\n", .{});
         const T = @TypeOf(v);
-        const hint = WrappedCtx{
-            .size = comptime @sizeOf(T),
-            .alignment = comptime @alignOf(T),
-        };
-        try err_check(napi.napi_wrap(self.env, res, @constCast(v), &delete_ref, @ptrCast(*anyopaque, @alignCast(hint.alignment, @constCast(&hint))), &ref));
+        var hint: *WrappedCtx = try allocator.create(WrappedCtx);
+        hint.* = WrappedCtx{ .size = comptime @sizeOf(T), .alignment = @alignOf(T) };
+        try err_check(napi.napi_wrap(self.env, res, @constCast(v), &delete_ref, @ptrCast(*anyopaque, @alignCast(@alignOf(*anyopaque), @constCast(hint))), &ref));
         try self.refs.put(allocator, @ptrToInt(v), ref);
         return res;
     }
@@ -464,8 +461,8 @@ pub const JSCtx = struct {
         const finalizer_ctx = @ptrCast(*WrappedCtx, @alignCast(@alignOf(*WrappedCtx), hint.?));
         var ctx = JSCtx.get_instance(env);
         const ptr_int = @ptrToInt(ptr.?);
-        // TODO: verify this worked to free allocated mem from wrapped struct
         allocator.rawFree(@ptrCast([*]u8, ptr.?)[0..finalizer_ctx.size], finalizer_ctx.alignment, @returnAddress());
+        allocator.destroy(finalizer_ctx);
         if (ctx.refs.get(ptr_int)) |r| {
             var v: napi.napi_value = undefined;
             // if reference is valid/new, return early
@@ -524,10 +521,15 @@ pub const JSCtx = struct {
                             .ErrorUnion => |e| {
                                 switch (@typeInfo(e.payload)) {
                                     .Pointer => |info| {
-                                        if (info.size == .One) {
-                                            @field(args, field.name) = allocator;
-                                        } else {
-                                            @field(args, field.name) = ctx.mem.allocator();
+                                        switch (info.size) {
+                                            .One => @field(args, field.name) = allocator,
+                                            .Slice => {
+                                                switch (info.child) {
+                                                    f32, f64, i8, i16, i32, i64, u8, u16, u32, u64 => @field(args, field.name) = allocator,
+                                                    else => @field(args, field.name) = ctx.mem.allocator(),
+                                                }
+                                            },
+                                            else => @field(args, field.name) = ctx.mem.allocator(),
                                         }
                                     },
                                     else => @field(args, field.name) = ctx.mem.allocator(),
@@ -595,7 +597,7 @@ pub const JSCtx = struct {
     pub fn create_external_with_finalizer(self: *JSCtx, v: *anyopaque, finalizer: napi.napi_finalize, hint: ?*anyopaque) Error!napi.napi_value {
         if (comptime trait.isPtrTo(.Fn)(@TypeOf(v))) @compileError("use create_function() to export fn");
         var res: napi.napi_value = undefined;
-        try err_check(napi.napi_create_external(self.env, v, finalizer, hint, &res));
+        try err_check(napi.napi_create_external(self.env, @ptrCast(*anyopaque, v), finalizer, hint, &res));
         return res;
     }
 
@@ -608,7 +610,7 @@ pub const JSCtx = struct {
 
     fn finalize_external(_: napi.napi_env, ptr: ?*anyopaque, hint: ?*anyopaque) callconv(.C) void {
         const finalizer_ctx = @ptrCast(*WrappedCtx, @alignCast(@alignOf(*WrappedCtx), hint.?));
-        // TODO: verify this worked to free allocated mem from wrapped struct
+        // TODO: free memory (needs tests; `rawFree` workaround to free `*anyopaque` ptr)
         allocator.rawFree(@ptrCast([*]u8, ptr.?)[0..finalizer_ctx.size], finalizer_ctx.alignment, @returnAddress());
     }
 
@@ -622,6 +624,22 @@ pub const JSCtx = struct {
         try err_check(napi.napi_create_arraybuffer(self.env, byte_len, &data, &res));
         std.mem.copy(T, @ptrCast([*]T, @alignCast(@alignOf(T), data.?))[0..v.len], v[0..v.len]);
         return res;
+    }
+
+    pub fn create_external_arraybuffer(self: *JSCtx, v: anytype) Error!napi.napi_value {
+        var res: napi.napi_value = undefined;
+        const SliceType = @TypeOf(v);
+        const byte_len: usize = v.len * @sizeOf(std.meta.Elem(SliceType));
+        var hint: *WrappedCtx = try allocator.create(WrappedCtx);
+        hint.* = WrappedCtx{ .size = byte_len, .alignment = @alignOf(SliceType) };
+        try err_check(napi.napi_create_external_arraybuffer(self.env, v.ptr, byte_len, &finalize_external_arraybuffer, @ptrCast(*anyopaque, @alignCast(@alignOf(*anyopaque), @constCast(hint))), &res));
+        return res;
+    }
+
+    pub fn finalize_external_arraybuffer(_: napi.napi_env, ptr: ?*anyopaque, hint: ?*anyopaque) callconv(.C) void {
+        const finalizer_ctx = @ptrCast(*WrappedCtx, @alignCast(@alignOf(*WrappedCtx), hint.?));
+        allocator.rawFree(@ptrCast([*]u8, ptr.?)[0..finalizer_ctx.size], @alignOf([*]u8), @returnAddress());
+        allocator.destroy(finalizer_ctx);
     }
 
     pub fn create_buffer(self: *JSCtx, v: []const u8) Error!napi.napi_value {
@@ -672,7 +690,7 @@ pub const JSCtx = struct {
 
     pub fn create_typedarray(self: *JSCtx, comptime T: type, v: anytype) Error!napi.napi_value {
         var res: napi.napi_value = undefined;
-        const buf = try self.create_arraybuffer(T, v);
+        const buf = try self.create_external_arraybuffer(v);
         try err_check(napi.napi_create_typedarray(self.env, get_napi_typedarray_type(T), v.len, buf, 0, &res));
         return res;
     }
@@ -692,7 +710,4 @@ pub const JSCtx = struct {
             else => @compileError("unsupported type"),
         };
     }
-
-    // TODO: create `TypedArray`
-    // pub fn create_typedarray(self: *JSCtx, v: ?*anyopaque)
 };

@@ -12,7 +12,7 @@ console.log(addon.fl_bytesUsed());
 
 // works to return tensor data as `TypedArray`
 const contig = addon.fl_asContiguousTensor(tensor);
-console.log(addon.fl_float32Buffer(contig));
+// console.log(addon.fl_float32Buffer(contig));
 
 // works to free tensor data
 addon.fl_dispose(tensor);
