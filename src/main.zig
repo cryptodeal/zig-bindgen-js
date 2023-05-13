@@ -186,19 +186,19 @@ fn wrapped_struct_get_b(v: *DemoStruct2) i64 {
 }
 
 fn initModule(js: *napigen.JSCtx, exports: napigen.napi_value) !napigen.napi_value {
-    @setEvalBranchQuota(100_000);
-    inline for (comptime std.meta.declarations(fl)) |d| {
-        // shumai bindings demo (WIP)
-        if (comptime std.mem.startsWith(u8, d.name, "fl_")) {
-            if (comptime std.mem.eql(u8, d.name, "fl_destroyTensor")) continue;
+    // @setEvalBranchQuota(100_000);
+    // inline for (comptime std.meta.declarations(fl)) |d| {
+    // shumai bindings demo (WIP)
+    // if (comptime std.mem.startsWith(u8, d.name, "fl_")) {
+    // if (comptime std.mem.eql(u8, d.name, "fl_destroyTensor")) continue;
 
-            const T = @TypeOf(@field(fl, d.name));
+    // const T = @TypeOf(@field(fl, d.name));
 
-            if (@typeInfo(T) == .Fn) {
-                try js.set_named_property(exports, "" ++ d.name, try js.create_named_function(d.name, @field(fl, d.name)));
-            }
-        }
-    }
+    // if (@typeInfo(T) == .Fn) {
+    // try js.set_named_property(exports, d.name ++ "", try js.create_named_function(d.name ++ "", @field(fl, d.name)));
+    // }
+    // }
+    // }
 
     // unit test functions
     try js.set_named_property(exports, "slice_to_Int8Array", try js.create_named_function("slice_to_Int8Array", slice_to_Int8Array));

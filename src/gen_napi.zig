@@ -65,9 +65,8 @@ const TransientAllocator = struct {
 
 // TODO: potentially useful to provide addtl context about function call
 pub const FnCtx = struct {
-    name: []const u8,
+    name: [:0]const u8,
     len: *usize,
-    alloc: std.heap.ArenaAllocator = undefined,
 };
 
 const WrappedCtx = struct {
@@ -94,9 +93,7 @@ pub const JSCtx = struct {
             .Enum => std.meta.intToEnum(T, self.get_number(u32, v)),
             .Struct => if (trait.isTuple(T)) self.get_tuple(T, v, ctx) else self.get_object(T, v, ctx),
             .Optional => |info| if (try self.type_of(v) == napi.napi_null) null else self.parse(info.child, v, ctx),
-            // TODO: better handling of pointers (not always going to leverage `wrap_object`)
             .Pointer => |info| switch (info.size) {
-                // handle by wrapping as user must define finalizer for `Napi::External` via hooks
                 .One => self.get_external(T, v),
                 .C => {
                     // if JS `TypedArray` equivalent exists, handle as such
@@ -149,7 +146,6 @@ pub const JSCtx = struct {
                     else => self.create_array_from(v, ctx),
                 };
             },
-            // TODO: better handling of pointers (not always going to leverage `wrap_object`)
             .Pointer => |info| switch (info.size) {
                 .One => self.create_external(v),
                 .C => {
@@ -418,12 +414,12 @@ pub const JSCtx = struct {
     }
 
     /// set value at key (`string`) in JS `Object`
-    pub fn set_named_property(self: *JSCtx, obj: napi.napi_value, key: [*:0]const u8, v: napi.napi_value) Error!void {
+    pub fn set_named_property(self: *JSCtx, obj: napi.napi_value, key: [:0]const u8, v: napi.napi_value) Error!void {
         try err_check(napi.napi_set_named_property(self.env, obj, key, v));
     }
 
     /// retrieve value at key (`string`) in JS `Object`
-    pub fn get_named_property(self: *JSCtx, obj: napi.napi_value, key: [*:0]const u8) Error!napi.napi_value {
+    pub fn get_named_property(self: *JSCtx, obj: napi.napi_value, key: [:0]const u8) Error!napi.napi_value {
         var res: napi.napi_value = undefined;
         try err_check(napi.napi_get_named_property(self.env, obj, key, &res));
         return res;
@@ -478,7 +474,7 @@ pub const JSCtx = struct {
     }
 
     /// creates JS function
-    pub fn create_named_function(self: *JSCtx, comptime name: []const u8, comptime func: anytype) Error!napi.napi_value {
+    pub fn create_named_function(self: *JSCtx, comptime name: [:0]const u8, comptime func: anytype) Error!napi.napi_value {
         // TODO: add hook (scoped to fn call?) here to capture length of returned C array
         const F = @TypeOf(func);
         const Args = std.meta.ArgsTuple(F);
@@ -537,7 +533,6 @@ pub const JSCtx = struct {
                             },
                             else => @field(args, field.name) = ctx.mem.allocator(),
                         }
-                        // @field(args, field.name) = ctx.mem.allocator();
                         continue;
                     }
 
@@ -614,13 +609,12 @@ pub const JSCtx = struct {
         allocator.rawFree(@ptrCast([*]u8, ptr.?)[0..finalizer_ctx.size], finalizer_ctx.alignment, @returnAddress());
     }
 
-    // TODO: get `ArrayBuffer`
     pub fn create_arraybuffer(self: *JSCtx, comptime T: type, v: anytype) Error!napi.napi_value {
         const bytes = comptime @sizeOf(T);
         var data: ?*anyopaque = undefined;
         var res: napi.napi_value = undefined;
         const byte_len: usize = v.len * bytes;
-        // TODO: avoid the copy?
+        // copy into JS controlled memory (no finalizer at the expense of a copy)
         try err_check(napi.napi_create_arraybuffer(self.env, byte_len, &data, &res));
         std.mem.copy(T, @ptrCast([*]T, @alignCast(@alignOf(T), data.?))[0..v.len], v[0..v.len]);
         return res;

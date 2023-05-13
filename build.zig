@@ -34,10 +34,10 @@ pub fn build(b: *std.Build) void {
 
     // weak-linkage
     lib.linker_allow_shlib_undefined = true;
-    lib.addLibraryPath(".");
-    lib.addRPath(".");
-    lib.linkSystemLibrary("flashlight_binding");
-    lib.addIncludePath("cpp");
+    // lib.addLibraryPath(".");
+    // lib.addRPath(".");
+    // lib.linkSystemLibrary("flashlight_binding");
+    // lib.addIncludePath("cpp");
     lib.addIncludePath("libs/napi-headers/include");
     lib.linkLibC();
 
@@ -57,10 +57,10 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     main_tests.linker_allow_shlib_undefined = true;
-    main_tests.addLibraryPath(".");
-    main_tests.addRPath(".");
-    main_tests.linkSystemLibrary("flashlight_binding");
-    main_tests.addIncludePath("cpp");
+    // main_tests.addLibraryPath(".");
+    // main_tests.addRPath(".");
+    // main_tests.linkSystemLibrary("flashlight_binding");
+    // main_tests.addIncludePath("cpp");
     main_tests.linkLibC();
 
     // This creates a build step. It will be visible in the `zig build --help` menu,
